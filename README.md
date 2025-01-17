@@ -1,128 +1,154 @@
-# Line AI Assistant Builder
+# Line AI Assistant
 
-一個幫助使用者建立和管理自己的 Line AI 官方帳號的跨平台應用程式。
+一個基於 LINE Bot 的 AI 助手系統，支援多角色對話和文件知識庫。
 
 ## 功能特點
-- 視覺化界面建立 Line AI Bot
-- 知識庫管理與配置
-- 即時對話測試
-- 數據分析與報表
-- 跨平台支援 (Desktop & Mobile)
 
-## 開發環境需求
+- 多角色 AI 對話系統
+- 文件知識庫管理
+- 網頁管理介面
+- LINE Bot 整合
+- 自動化通知系統
+
+## 系統需求
+
 - Python 3.8+
-- Node.js 14+
-- Flutter 2.0+
+- PostgreSQL
+- ngrok
 
-## 安裝說明
+## 安裝步驟
 
-### 1. 建立虛擬環境
-
-```bash
-python -m venv venv
-```
-
-### 2. 啟動虛擬環境
-
-```bash
-.\venv\Scripts\activate
-```
-
-### 3. 安裝依賴
-
+1. 安裝依賴套件：
 ```bash
 pip install -r requirements.txt
 ```
 
-
-# 安裝所需套件
-
-
-### 3. 環境設定
-在專案根目錄建立 `.env` 文件，並填入以下設定：
-
-
+2. 設定環境變數或建立 .env 檔案：
+```env
 # LINE Bot Settings
+LINE_CHANNEL_SECRET=your_channel_secret
+LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token
 
-LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
-
-LINE_CHANNEL_SECRET=your_line_channel_secret
-
-
-# Google API Settings
-
-GOOGLE_API_KEY=your_google_api_key
-
+# Database Settings
+DATABASE_URL=postgresql://username:password@localhost:5432/line_ai_db
 
 # Ngrok Settings
+NGROK_AUTH_TOKEN=your_ngrok_token
+```
 
-NGROK_AUTH_TOKEN=your_ngrok_auth_token
+3. 建立資料庫：
+```sql
+CREATE DATABASE line_ai_db;
+```
 
+## 使用方式
 
-## 啟動說明
+### 首次使用
 
-### 1. 測試配置
+1. 執行專案：
+```bash
+python run.py
+```
+- 系統會自動進入管理員介面
+- 完成必要的初始設定：
+  - 設定 API Keys
+  - 導入或設定 AI 角色
+  - 上傳知識庫文件
+  - 進行測試對話
 
-# 測試環境變數是否正確載入
+### 日常使用
 
-python -m shared.config.config
+1. 啟動系統：
+```bash
+python run.py
+```
 
+2. 管理員操作：
+- 在管理員介面中可以：
+  - 啟動/停止 LINE Bot
+  - 管理 AI 角色設定
+  - 管理文件知識庫
+  - 查看系統狀態
+  - 測試 AI 回應
 
-### 2. 啟動服務器
+### 注意事項
 
-# 啟動 webhook 服務器
+1. 系統運行狀態：
+- LINE Bot 運行時無法進行設定修改
+- 需要修改設定時，請先停止 LINE Bot
 
-python -m shared.line_sdk.server
+2. 文件管理：
+- 支援的文件格式：PDF, DOCX, XLSX, TXT
+- 上傳文件會自動建立知識庫索引
 
+3. 角色管理：
+- 可以導入預設角色
+- 可以自訂角色設定和提示詞
+- 每個角色可以設定獨立的參數
 
+## 專案結構
 
-### 3. 使用 ngrok 進行測試
+```
+Line_Ai/
+├── admin/              # 管理員介面
+├── shared/             # 共用元件
+│   ├── config/        # 設定檔
+│   ├── database/      # 資料庫模組
+│   ├── line_sdk/      # LINE Bot SDK
+│   └── utils/         # 工具函數
+├── ui/                # 使用者介面
+├── data/              # 資料存儲
+├── uploads/           # 上傳文件
+└── logs/              # 日誌文件
+```
 
+## 開發指南
 
+### 添加新角色
 
-# 在新的終端機視窗中運行
+1. 在 `shared/config/default_roles.json` 中定義角色：
+```json
+{
+    "role_id": {
+        "name": "角色名稱",
+        "description": "角色描述",
+        "prompt": "角色提示詞",
+        "settings": {
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "max_tokens": 1000,
+            "web_search": true
+        }
+    }
+}
+```
 
-ngrok http 5000
+### 自訂通知
 
+1. 在管理員介面中設定：
+- 每日通知
+- 每週通知
+- 特定日期通知
 
-## 測試步驟
+## 故障排除
 
-1. **確認服務器運行**
-   - 檢查終端機輸出是否顯示 `Uvicorn running on http://0.0.0.0:5000`
-   - 確認沒有錯誤訊息
+1. LINE Bot 無法啟動：
+- 檢查 API Keys 設定
+- 確認 ngrok 是否正常運行
+- 查看日誌文件
 
-2. **確認 ngrok 連接**
-   - 複製 ngrok 提供的 HTTPS URL
-   - 在 LINE Developers Console 中設定 Webhook URL
-   - Webhook URL 格式：`https://your-ngrok-url/webhook`
-
-3. **測試 LINE Bot**
-   - 掃描 LINE Bot 的 QR Code
-   - 發送測試訊息
-   - 確認是否收到回應
-
-## 常見問題排解
-
-1. **找不到模組**
-   ```bash
-   pip install [missing_module_name]
-   ```
-
-2. **環境變數未載入**
-   - 確認 `.env` 文件位置正確
-   - 確認環境變數格式正確
-   - 使用 `Config.print_config()` 檢查配置
-
-3. **服務器啟動失敗**
-   - 確認端口 5000 未被占用
-   - 確認虛擬環境已啟動
-   - 檢查錯誤日誌
-
-## 開發文檔
-[待補充]
+2. 資料庫連接問題：
+- 確認資料庫服務是否運行
+- 檢查連接字串設定
+- 確認資料庫用戶權限
 
 ## 貢獻指南
-[待補充]
 
-## 授權資訊
-[待補充]
+1. Fork 專案
+2. 創建特性分支
+3. 提交變更
+4. 發送 Pull Request
+
+## 授權
+
+本專案採用 MIT 授權條款

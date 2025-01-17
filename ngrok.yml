@@ -1,0 +1,7 @@
+version: "2"
+authtoken: 2rNrVgzjMv8cUIdN8zt40oYOvaU_7Yt4PMwkVChscQL5Y26Ef
+
+tunnels:
+  line-bot:
+    addr: '5000'
+    proto: http 
