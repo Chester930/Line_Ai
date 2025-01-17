@@ -51,6 +51,8 @@ def run_admin():
     """運行管理員界面"""
     try:
         import streamlit.web.cli as stcli
+        import sys
+        
         sys.argv = ["streamlit", "run", "admin/admin_ui.py"]
         logger.info("Starting admin interface...")
         sys.exit(stcli.main())
@@ -60,26 +62,24 @@ def run_admin():
 
 def run_app():
     """運行主應用程式"""
-    from shared.config.config import Config
-    from shared.utils.ngrok_manager import NgrokManager
-    from flask import Flask
-    import time
-    
     try:
+        from shared.utils.ngrok_manager import NgrokManager
+        from ui.line_bot_ui import app
+        
         # 啟動 ngrok
         ngrok = NgrokManager()
         webhook_url = ngrok.start()
         logger.info(f"Webhook URL: {webhook_url}")
         
         # 啟動 Line Bot 應用
-        from ui.line_bot_ui import app
         app.run(host='0.0.0.0', port=5000)
         
     except Exception as e:
         logger.error(f"Error starting application: {e}")
         raise
     finally:
-        ngrok.stop()
+        if 'ngrok' in locals():
+            ngrok.stop()
 
 def main():
     project_status = ProjectStatus()

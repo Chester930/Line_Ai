@@ -1,57 +1,94 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, LargeBinary
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from .base import Base
 
-Base = declarative_base()
-
-class Bot(Base):
-    """Line Bot 設定"""
-    __tablename__ = 'bots'
+class User(Base):
+    """用戶表"""
+    __tablename__ = "users"
     
-    id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False)
-    channel_id = Column(String(50), unique=True, nullable=False)
-    channel_secret = Column(String(100), nullable=False)
-    channel_access_token = Column(String(200), nullable=False)
-    webhook_url = Column(String(200))
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    id = Column(Integer, primary_key=True, index=True)
+    line_user_id = Column(String(50), unique=True, index=True)
+    display_name = Column(String(100))
+    picture_url = Column(String(200))
+    status = Column(String(20), default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 關聯
-    documents = relationship("Document", back_populates="bot")
-    chat_logs = relationship("ChatLog", back_populates="bot")
+    conversations = relationship("Conversation", back_populates="user")
+    settings = relationship("UserSetting", back_populates="user", uselist=False)
+
+class Conversation(Base):
+    """對話表"""
+    __tablename__ = "conversations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    role_id = Column(String(50))  # 對應到 role_manager 中的角色
+    title = Column(String(200))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 關聯
+    user = relationship("User", back_populates="conversations")
+    messages = relationship("Message", back_populates="conversation")
+
+class Message(Base):
+    """消息表"""
+    __tablename__ = "messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"))
+    role = Column(String(20))  # user 或 assistant
+    content = Column(Text)
+    tokens = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 關聯
+    conversation = relationship("Conversation", back_populates="messages")
+
+class UserSetting(Base):
+    """用戶設定表"""
+    __tablename__ = "user_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    default_role_id = Column(String(50))
+    notification_enabled = Column(Boolean, default=True)
+    web_search_enabled = Column(Boolean, default=True)
+    settings = Column(JSON)  # 其他自定義設定
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 關聯
+    user = relationship("User", back_populates="settings")
 
 class Document(Base):
-    """文件存儲"""
-    __tablename__ = 'documents'
+    """文件表"""
+    __tablename__ = "documents"
     
-    id = Column(Integer, primary_key=True)
-    bot_id = Column(Integer, ForeignKey('bots.id'))
-    filename = Column(String(255), nullable=False)
-    file_type = Column(String(50), nullable=False)  # 例如: pdf, docx, xlsx
-    file_size = Column(Integer, nullable=False)  # 以字節為單位
-    content_type = Column(String(100))  # MIME 類型
-    file_path = Column(String(500))  # 文件在磁盤上的存儲路徑
-    processed = Column(Boolean, default=False)  # 是否已處理為知識庫
-    processed_content = Column(JSON)  # 處理後的內容（如果需要）
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200))
+    content = Column(Text)
+    file_path = Column(String(500))
+    file_type = Column(String(50))
+    embedding_status = Column(String(20), default="pending")  # pending, processing, completed, failed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 關聯
-    bot = relationship("Bot", back_populates="documents")
+    chunks = relationship("DocumentChunk", back_populates="document")
 
-class ChatLog(Base):
-    """對話記錄"""
-    __tablename__ = 'chat_logs'
+class DocumentChunk(Base):
+    """文件片段表 (用於向量搜索)"""
+    __tablename__ = "document_chunks"
     
-    id = Column(Integer, primary_key=True)
-    bot_id = Column(Integer, ForeignKey('bots.id'))
-    user_id = Column(String(50), nullable=False)
-    message = Column(String(2000), nullable=False)
-    response = Column(String(2000))
-    reference_doc_ids = Column(JSON)  # 引用的文件 ID 列表
-    created_at = Column(DateTime, default=datetime.now)
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"))
+    content = Column(Text)
+    embedding = Column(JSON)  # 存儲向量嵌入
+    created_at = Column(DateTime, default=datetime.utcnow)
     
     # 關聯
-    bot = relationship("Bot", back_populates="chat_logs")
+    document = relationship("Document", back_populates="chunks")

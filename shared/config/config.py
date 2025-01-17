@@ -1,45 +1,55 @@
 import os
 from dotenv import load_dotenv
-import logging
+from pathlib import Path
 
-# 載入環境變數
-load_dotenv()
+# 加載 .env 文件
+env_path = Path(__file__).parent.parent.parent / '.env'
+load_dotenv(env_path)
 
 class Config:
-    # 基礎路徑設定
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    DATA_DIR = os.path.join(BASE_DIR, "data")
-    UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-    LOG_DIR = os.path.join(BASE_DIR, "logs")
+    # LINE Bot Settings
+    LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+    LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
     
-    # 確保必要目錄存在
-    for directory in [DATA_DIR, UPLOAD_DIR, LOG_DIR]:
-        os.makedirs(directory, exist_ok=True)
+    # Google API Settings
+    GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
     
-    # 資料庫設定
-    DB_TYPE = os.getenv("DB_TYPE", "sqlite")
-    if DB_TYPE == "sqlite":
-        DATABASE_URL = os.getenv(
-            "DATABASE_URL", 
-            f"sqlite:///{os.path.join(DATA_DIR, 'line_ai.db')}"
-        )
-    else:
-        DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://username:password@localhost:5432/line_ai_db")
+    # Database Settings
+    DB_TYPE = os.getenv('DB_TYPE', 'sqlite')
+    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/line_ai.db')
     
-    # LINE Bot 設定
-    LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-    LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+    # Ngrok Settings
+    NGROK_AUTH_TOKEN = os.getenv('NGROK_AUTH_TOKEN')
     
-    # Ngrok 設定
-    NGROK_AUTH_TOKEN = os.getenv("NGROK_AUTH_TOKEN")
+    # AI Model Settings
+    MODEL_NAME = os.getenv('MODEL_NAME', 'gemini-pro')
+    MODEL_TEMPERATURE = float(os.getenv('MODEL_TEMPERATURE', '0.7'))
+    MODEL_TOP_P = float(os.getenv('MODEL_TOP_P', '0.9'))
+    MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '2000'))
     
-    # AI 模型設定
-    MODEL_NAME = os.getenv("MODEL_NAME", "gemini-pro")
-    MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", "0.7"))
-    MODEL_TOP_P = float(os.getenv("MODEL_TOP_P", "0.9"))
-    MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "2000"))
+    # Logging
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     
-    # 日誌設定
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    LOG_FILE = os.path.join(LOG_DIR, "app.log")
+    # Directories
+    BASE_DIR = Path(__file__).parent.parent.parent
+    DATA_DIR = BASE_DIR / 'data'
+    UPLOAD_DIR = BASE_DIR / 'uploads'
+    LOG_DIR = BASE_DIR / 'logs'
+    
+    @classmethod
+    def validate(cls):
+        """驗證必要的配置"""
+        required = [
+            'LINE_CHANNEL_SECRET',
+            'LINE_CHANNEL_ACCESS_TOKEN',
+            'GOOGLE_API_KEY',
+            'NGROK_AUTH_TOKEN'
+        ]
+        
+        missing = []
+        for key in required:
+            if not getattr(cls, key):
+                missing.append(key)
+        
+        if missing:
+            raise ValueError(f"Missing required configuration: {', '.join(missing)}")

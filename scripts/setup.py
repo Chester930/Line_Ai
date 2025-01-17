@@ -59,7 +59,8 @@ def main():
     scripts = [
         ("scripts/create_directories.py", "創建目錄結構"),
         ("scripts/create_project_files.py", "創建專案文件"),
-        ("scripts/create_env_example.py", "創建環境變數模板")
+        ("scripts/create_env_example.py", "創建環境變數模板"),
+        ("scripts/init_database.py", "初始化資料庫")
     ]
     
     # 運行所有腳本
@@ -84,7 +85,9 @@ def main():
     logger.info("1. .env - 檢查並更新配置")
     logger.info("2. ngrok.yml - 確認 ngrok 配置")
     logger.info("\n運行應用：")
-    logger.info("python run.py")
+    logger.info("1. 管理員介面: python run.py --mode admin")
+    logger.info("2. LINE Bot: python run.py --mode app")
+    logger.info("3. Studio: streamlit run studio/studio_ui.py")
     
     return True
 

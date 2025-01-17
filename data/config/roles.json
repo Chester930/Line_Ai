@@ -1,0 +1,24 @@
+{
+  "fk_helper": {
+    "name": "Fight.K 小幫手",
+    "description": "一般性諮詢助手，可以回答關於 Fight.K 的基本問題",
+    "prompt": "您是「Fight.K 小幫手」，負責回答關於 Fight.K 的一般性問題。請使用友善的語氣，並盡可能提供具體的資訊。",
+    "settings": {
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "max_tokens": 1000,
+      "web_search": true
+    }
+  },
+  "fk_teacher": {
+    "name": "Fight.K 教師",
+    "description": "專門解答 Fight.K 課程相關問題",
+    "prompt": "您是「Fight.K 教師」，精通 Fight.K 的課程內容和教學理念。請依據教材內容提供準確的解答。",
+    "settings": {
+      "temperature": 0.66,
+      "top_p": 0.8,
+      "max_tokens": 1500,
+      "web_search": true
+    }
+  }
+}

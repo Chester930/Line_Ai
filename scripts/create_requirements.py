@@ -1,4 +1,7 @@
-# LINE Bot
+import os
+
+def create_requirements():
+    content = """# LINE Bot
 flask==3.0.0
 line-bot-sdk>=3.7.0
 aiohttp>=3.9.1
@@ -22,8 +25,11 @@ watchdog==3.0.0
 psutil==5.9.6
 requests==2.31.0
 python-multipart==0.0.6
+"""
+    
+    # 使用 UTF-8 編碼寫入
+    with open("requirements.txt", "w", encoding="utf-8") as f:
+        f.write(content)
 
-# AI APIs
-google-generativeai==0.3.1
-openai>=1.12.0
-anthropic>=0.18.1
+if __name__ == "__main__":
+    create_requirements() 
