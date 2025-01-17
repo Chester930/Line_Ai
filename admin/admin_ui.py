@@ -202,18 +202,115 @@ def show_api_settings():
     MODEL_OPTIONS = {
         "Google": {
             "api_key": "GOOGLE_API_KEY",
-            "models": ["gemini-pro", "gemini-pro-vision"],
-            "description": "Gemini 系列模型"
+            "models": [
+                "gemini-2.0-flash-exp",  # 雙子座2.0快閃記憶體
+                "gemini-1.5-flash",      # 雙子座1.5閃存
+                "gemini-1.5-flash-8b",   # 雙子座1.5 Flash-8B
+                "gemini-1.5-pro",        # 雙子座1.5專業版
+                "text-embedding-004",     # 文字嵌入
+                "aqa"                     # 空氣品質保證
+            ],
+            "description": """Gemini 系列模型：
+            
+            1. 雙子座2.0快閃記憶體 (gemini-2.0-flash-exp)
+               • 新一代多模態模型
+               • 支援: 音訊、圖片、影片和文字
+               • 特點: 速度快、功能全面
+            
+            2. 雙子座1.5閃存 (gemini-1.5-flash)
+               • 快速且多功能的通用模型
+               • 適合: 日常對話和一般任務
+               • 特點: 反應快速、資源消耗低
+            
+            3. 雙子座1.5 Flash-8B (gemini-1.5-flash-8b)
+               • 輕量級模型
+               • 適合: 大量簡單任務處理
+               • 特點: 超低延遲、高並發
+            
+            4. 雙子座1.5專業版 (gemini-1.5-pro)
+               • 高階推理模型
+               • 適合: 複雜分析和專業任務
+               • 特點: 推理能力強、結果精確
+            
+            5. 文字嵌入 (text-embedding-004)
+               • 文本向量化模型
+               • 用途: 文本相似度分析
+               • 特點: 高精度文本理解
+            
+            6. 空氣品質保證 (aqa)
+               • 專業問答模型
+               • 用途: 提供可靠來源解答
+               • 特點: 答案準確度高"""
         },
         "OpenAI": {
             "api_key": "OPENAI_API_KEY",
-            "models": ["gpt-3.5-turbo", "gpt-4", "gpt-4-vision"],
-            "description": "GPT 系列模型"
+            "models": [
+                "gpt-4o",           # 通用旗艦模型
+                "gpt-4o-mini",      # 小型快速模型
+                "o1",               # 複雜推理模型
+                "o1-mini",          # 輕量推理模型
+                "gpt-4o-realtime",  # 即時互動模型
+                "gpt-4o-audio",     # 音訊處理模型
+                "gpt-4-turbo",      # 舊版高智能模型
+                "gpt-3.5-turbo",    # 基礎快速模型
+                "dall-e-3",         # 圖像生成模型
+                "tts-1",            # 語音合成模型
+                "whisper-1",        # 語音識別模型
+                "text-embedding-3",  # 文本向量模型
+                "moderation-latest"  # 內容審核模型
+            ],
+            "description": """OpenAI 系列模型：
+            
+            1. 語言模型
+               • GPT-4o: 最新旗艦模型，全能型 AI
+               • GPT-4o-mini: 經濟型快速模型
+               • O1/O1-mini: 專注推理的新一代模型
+               • GPT-4-turbo: 前代高性能模型
+               • GPT-3.5-turbo: 性價比最高的基礎模型
+            
+            2. 多模態模型
+               • GPT-4o-realtime: 即時音訊文本互動
+               • GPT-4o-audio: 專業音訊處理
+               • DALL·E-3: AI 圖像生成
+            
+            3. 專業工具
+               • TTS-1: 高品質語音合成
+               • Whisper-1: 精確語音識別
+               • Text-embedding-3: 文本向量化
+               • Moderation-latest: 內容安全審核
+            
+            特點說明：
+            • 即時互動: 支援流式輸出
+            • 多語言: 支援超過95種語言
+            • 安全性: 內建內容過濾
+            • 可擴展: API 使用無並發限制"""
         },
         "Anthropic": {
             "api_key": "CLAUDE_API_KEY",
-            "models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
-            "description": "Claude 系列模型"
+            "models": [
+                # Claude 3.5 系列
+                "claude-3-5-sonnet-20241022",  # 3.5 Sonnet
+                "claude-3-5-haiku-20241022",   # 3.5 Haiku
+                
+                # Claude 3 系列
+                "claude-3-opus-20240229",      # 3 Opus
+                "claude-3-sonnet-20240229",    # 3 Sonnet
+                "claude-3-haiku-20240307"      # 3 Haiku
+            ],
+            "description": """Claude 系列模型：
+            Claude 3.5 系列 (最新):
+            - claude-3-5-sonnet: 高性能通用模型
+            - claude-3-5-haiku: 快速輕量模型
+            
+            Claude 3 系列:
+            - claude-3-opus: 最強大的模型，適合複雜任務
+            - claude-3-sonnet: 平衡性能和速度的通用模型
+            - claude-3-haiku: 快速響應的輕量模型
+            
+            支援平台:
+            - Anthropic API (直接使用)
+            - AWS Bedrock (添加 anthropic. 前綴)
+            - GCP Vertex AI (使用 @ 格式)"""
         }
     }
     
