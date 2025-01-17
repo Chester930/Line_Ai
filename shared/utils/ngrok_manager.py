@@ -1,150 +1,127 @@
-import subprocess
-import time
-import re
+import os
 import sys
 import platform
 import requests
-from urllib.parse import urlparse
-import os
+import zipfile
+import subprocess
 import json
-from datetime import datetime
+import time
+import logging
+from pathlib import Path
+from shared.config.config import Config
+
+logger = logging.getLogger(__name__)
 
 class NgrokManager:
     def __init__(self):
-        self.process = None
-        self.url = None
-        self.start_time = None
-        self.session_info = {}
-
-    def clear_screen(self):
-        """清除終端機畫面"""
-        os.system('cls' if platform.system() == 'Windows' else 'clear')
-
-    def print_banner(self, message=""):
-        """顯示格式化的橫幅"""
-        width = 70
-        print(f"\n{'='*width}")
-        if message:
-            padding = (width - len(message)) // 2
-            print(f"{'='*padding} {message} {'='*padding}")
-            print(f"{'='*width}")
-
-    def save_session_info(self):
-        """保存會話資訊"""
-        if self.url and self.start_time:
-            self.session_info = {
-                'url': self.url,
-                'start_time': self.start_time.isoformat(),
-                'webhook_url': f"{self.url}/webhook",
-                'web_interface': "http://127.0.0.1:4040"
-            }
-            
-            # 確保目錄存在
-            os.makedirs('logs', exist_ok=True)
-            
-            # 保存到文件
-            with open('logs/ngrok_session.json', 'w', encoding='utf-8') as f:
-                json.dump(self.session_info, f, ensure_ascii=False, indent=2)
-
-    def wait_for_ngrok_api(self, max_retries=10):
-        """等待 ngrok API 可用"""
-        for i in range(max_retries):
-            try:
-                response = requests.get("http://127.0.0.1:4040/api/tunnels")
-                if response.status_code == 200:
-                    return True
-            except requests.exceptions.ConnectionError:
-                print(f"等待 ngrok 啟動中... ({i+1}/{max_retries})")
-                time.sleep(2)
-        return False
-
-    def start_ngrok(self):
-        """啟動 ngrok 並獲取 URL"""
+        self.base_dir = Config.DATA_DIR
+        self.ngrok_path = self._get_ngrok_path()
+        self.config_path = os.path.join(self.base_dir, "ngrok.yml")
+        
+    def _get_ngrok_path(self):
+        """獲取 ngrok 執行檔路徑"""
+        system = platform.system().lower()
+        if system == "windows":
+            return os.path.join(self.base_dir, "ngrok.exe")
+        return os.path.join(self.base_dir, "ngrok")
+    
+    def _download_ngrok(self):
+        """下載 ngrok"""
         try:
-            self.clear_screen()
-            self.print_banner("初始化 Ngrok 服務")
-            self.start_time = datetime.now()
+            system = platform.system().lower()
+            arch = platform.machine().lower()
             
-            # 根據作業系統選擇適當的命令
-            if platform.system() == 'Windows':
-                command = 'ngrok http 5000 --authtoken 2rNrVgzjMv8cUIdN8zt40oYOvaU_7Yt4PMwkVChscQL5Y26Ef'
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                self.process = subprocess.Popen(
-                    command,
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    startupinfo=startupinfo
-                )
+            # 確定下載 URL
+            if system == "windows":
+                url = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip"
+            elif system == "darwin":
+                url = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip"
             else:
-                command = ['ngrok', 'http', '5000', '--authtoken', '2rNrVgzjMv8cUIdN8zt40oYOvaU_7Yt4PMwkVChscQL5Y26Ef']
-                self.process = subprocess.Popen(
-                    command,
+                url = "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip"
+            
+            # 下載檔案
+            response = requests.get(url)
+            zip_path = os.path.join(self.base_dir, "ngrok.zip")
+            
+            with open(zip_path, 'wb') as f:
+                f.write(response.content)
+            
+            # 解壓縮
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(self.base_dir)
+            
+            # 設置執行權限
+            if system != "windows":
+                os.chmod(self.ngrok_path, 0o755)
+            
+            # 清理
+            os.remove(zip_path)
+            return True
+            
+        except Exception as e:
+            logger.error(f"下載 ngrok 失敗: {str(e)}")
+            return False
+
+    def _create_config(self):
+        """創建 ngrok 配置文件"""
+        config = {
+            "version": "2",
+            "authtoken": Config.NGROK_AUTH_TOKEN,
+            "tunnels": {
+                "line-bot": {
+                    "proto": "http",
+                    "addr": "5000"
+                }
+            }
+        }
+        
+        with open(self.config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+    
+    def ensure_ngrok(self):
+        """確保 ngrok 可用"""
+        if not os.path.exists(self.ngrok_path):
+            if not self._download_ngrok():
+                raise RuntimeError("無法下載 ngrok")
+        
+        self._create_config()
+    
+    def start(self):
+        """啟動 ngrok"""
+        try:
+            self.ensure_ngrok()
+            
+            # 啟動 ngrok
+            process = subprocess.Popen(
+                [self.ngrok_path, "start", "--config", self.config_path, "line-bot"],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE
                 )
 
-            print("\n正在啟動 ngrok 服務...")
+            # 等待隧道建立
+            time.sleep(3)
             
-            if not self.wait_for_ngrok_api():
-                print("\n❌ ngrok API 啟動超時")
-                self.stop_ngrok()
-                return None
+            # 獲取公開 URL
+            try:
+                response = requests.get("http://localhost:4040/api/tunnels")
+                tunnels = response.json()["tunnels"]
+                for tunnel in tunnels:
+                    if tunnel["proto"] == "https":
+                        return tunnel["public_url"]
+            except:
+                pass
             
-            response = requests.get("http://127.0.0.1:4040/api/tunnels")
-            tunnels = response.json()['tunnels']
-            
-            if tunnels:
-                self.url = tunnels[0]['public_url']
-                if not self.url.startswith('https'):
-                    parsed = urlparse(self.url)
-                    self.url = f'https://{parsed.netloc}'
-                
-                # 保存會話資訊
-                self.save_session_info()
-                
-                self.clear_screen()
-                self.print_banner("Ngrok 服務啟動成功")
-                print(f"\n🔗 Webhook URL:")
-                print(f"   {self.url}/webhook")
-                print(f"\n🌐 Web 管理介面:")
-                print(f"   http://127.0.0.1:4040")
-                print(f"\n📝 操作說明:")
-                print(f"   1. 複製上方的 Webhook URL")
-                print(f"   2. 將 URL 設定到 LINE Developers Console")
-                print(f"   3. 在 LINE Bot 中測試連線狀態")
-                print(f"\n⏱️ 啟動時間: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                print(f"📋 會話資訊已保存至: logs/ngrok_session.json")
-                self.print_banner()
-                print("\n💡 按 Ctrl+C 可以停止服務...\n")
-                return self.url
-            else:
-                print("\n❌ 無法獲取 ngrok URL")
-                return None
+            raise RuntimeError("無法獲取 ngrok URL")
 
         except Exception as e:
-            print(f"\n❌ 啟動 ngrok 時發生錯誤: {str(e)}")
-            self.stop_ngrok()
-            return None
-
-    def stop_ngrok(self):
-        """停止 ngrok 進程"""
-        if self.process:
-            self.process.terminate()
-            self.process = None
-            self.url = None
-            if self.start_time:
-                duration = datetime.now() - self.start_time
-                print(f"\n⏱️ 服務運行時間: {duration}")
-            print("\n✅ Ngrok 服務已停止")
-
-if __name__ == "__main__":
-    manager = NgrokManager()
-    try:
-        url = manager.start_ngrok()
-        if url:
-            while True:
-                time.sleep(1)
-    except KeyboardInterrupt:
-        manager.stop_ngrok() 
+            logger.error(f"啟動 ngrok 失敗: {str(e)}")
+            raise
+    
+    def stop(self):
+        """停止 ngrok"""
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", "ngrok.exe"], 
+                         stdout=subprocess.PIPE, 
+                         stderr=subprocess.PIPE)
+        except:
+            pass 
