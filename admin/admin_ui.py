@@ -10,6 +10,7 @@ from shared.database.database import SessionLocal
 from shared.config.config import Config
 from pathlib import Path
 from dotenv import dotenv_values
+import asyncio
 
 def show_system_status():
     st.header("系統狀態")
@@ -203,34 +204,42 @@ def show_api_settings():
         "Google": {
             "api_key": "GOOGLE_API_KEY",
             "models": [
-                "gemini-2.0-flash-exp",  # 雙子座2.0快閃記憶體
-                "gemini-1.5-flash",      # 雙子座1.5閃存
-                "gemini-1.5-flash-8b",   # 雙子座1.5 Flash-8B
-                "gemini-1.5-pro",        # 雙子座1.5專業版
-                "text-embedding-004",     # 文字嵌入
-                "aqa"                     # 空氣品質保證
+                "gemini-2.0-flash-exp",  # Gemini 2.0快閃記憶體
+                "gemini-1.5-flash",      # Gemini 1.5閃存
+                "gemini-1.5-flash-8b",   # Gemini 1.5 Flash-8B
+                "gemini-1.5-pro",        # Gemini 1.5專業版
+                "text-embedding-004",     # 文字嵌入 (開發中)
+                "aqa"                     # 空氣品質保證 (開發中)
+            ],
+            "available_models": [        # 目前可用的模型
+                "gemini-2.0-flash-exp",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-1.5-pro"
             ],
             "description": """Gemini 系列模型：
             
-            1. 雙子座2.0快閃記憶體 (gemini-2.0-flash-exp)
+            1. Gemini 2.0快閃記憶體 (gemini-2.0-flash-exp)
                • 新一代多模態模型
                • 支援: 音訊、圖片、影片和文字
                • 特點: 速度快、功能全面
             
-            2. 雙子座1.5閃存 (gemini-1.5-flash)
+            2. Gemini 1.5閃存 (gemini-1.5-flash)
                • 快速且多功能的通用模型
                • 適合: 日常對話和一般任務
                • 特點: 反應快速、資源消耗低
             
-            3. 雙子座1.5 Flash-8B (gemini-1.5-flash-8b)
+            3. Gemini 1.5 Flash-8B (gemini-1.5-flash-8b)
                • 輕量級模型
                • 適合: 大量簡單任務處理
                • 特點: 超低延遲、高並發
             
-            4. 雙子座1.5專業版 (gemini-1.5-pro)
+            4. Gemini 1.5專業版 (gemini-1.5-pro)
                • 高階推理模型
                • 適合: 複雜分析和專業任務
                • 特點: 推理能力強、結果精確
+            
+            以下功能開發中：
             
             5. 文字嵌入 (text-embedding-004)
                • 文本向量化模型
@@ -334,12 +343,12 @@ def show_api_settings():
                 if api_key:
                     active_providers.append(provider)
                     
-                    # 選擇要啟用的模型
+                    # 選擇要使用的模型
                     enabled_models = st.multiselect(
-                        "啟用的模型",
-                        options=config["models"],
-                        default=[config["models"][0]],
-                        help=f"選擇要啟用的 {provider} 模型"
+                        "使用的模型",  # 改為"使用的模型"
+                        options=config["available_models"] if "available_models" in config else config["models"],
+                        default=[config["available_models"][0]] if "available_models" in config else [config["models"][0]],
+                        help=f"選擇要使用的 {provider} 模型"
                     )
                     
                     api_configs[provider] = {
@@ -459,73 +468,72 @@ def test_claude(api_key: str):
         st.error(f"❌ Claude API 測試失敗：{str(e)}")
 
 def show_line_account_management():
-    st.header("LINE 官方帳號管理")
+    st.header("LINE 官方帳號管理 (LINE Official Account)")
     
-    # 基本設定
-    with st.expander("帳號設定 (Account Settings)", expanded=True):
-        with st.form("line_account_settings"):
-            st.subheader("Channel 設定")
-            
-            # LINE API 設定
-            channel_secret = st.text_input(
-                "Channel Secret",
-                value=getattr(Config, 'LINE_CHANNEL_SECRET', '') or "",
-                type="password",
-                help="從 LINE Developers 取得的 Channel Secret"
-            )
-            
-            channel_token = st.text_input(
-                "Channel Access Token",
-                value=getattr(Config, 'LINE_CHANNEL_ACCESS_TOKEN', '') or "",
-                type="password",
-                help="從 LINE Developers 取得的 Channel Access Token"
-            )
-            
-            # Webhook 設定
-            ngrok_token = st.text_input(
-                "Ngrok Auth Token",
-                value=getattr(Config, 'NGROK_AUTH_TOKEN', '') or "",
-                type="password",
-                help="用於設定 Webhook URL"
-            )
-            
-            if st.form_submit_button("保存設定"):
-                try:
-                    env_updates = {
-                        "LINE_CHANNEL_SECRET": channel_secret,
-                        "LINE_CHANNEL_ACCESS_TOKEN": channel_token,
-                        "NGROK_AUTH_TOKEN": ngrok_token
-                    }
-                    update_env_file(env_updates)
-                    st.success("✅ 設定已更新")
-                except Exception as e:
-                    st.error(f"❌ 保存失敗：{str(e)}")
+    # 從環境變數獲取設定值
+    line_settings = {
+        'LINE_CHANNEL_SECRET': os.getenv('LINE_CHANNEL_SECRET'),
+        'LINE_CHANNEL_ACCESS_TOKEN': os.getenv('LINE_CHANNEL_ACCESS_TOKEN'),
+        'LINE_BOT_ID': os.getenv('LINE_BOT_ID'),
+        'NGROK_AUTH_TOKEN': os.getenv('NGROK_AUTH_TOKEN')
+    }
     
-    # 機器人控制
-    with st.expander("機器人控制 (Bot Control)", expanded=True):
+    settings_names = {
+        'LINE_CHANNEL_SECRET': '頻道密鑰',
+        'LINE_CHANNEL_ACCESS_TOKEN': '頻道存取權杖',
+        'LINE_BOT_ID': '機器人 ID',
+        'NGROK_AUTH_TOKEN': 'Ngrok 權杖'
+    }
+    
+    # 檢查缺少的設定
+    missing_settings = [
+        settings_names[key] 
+        for key, value in line_settings.items() 
+        if not value
+    ]
+    
+    if missing_settings:
+        st.error("⚠️ 尚未完成必要設定")
+        
+        st.markdown("""
+        ### LINE 官方帳號設定步驟
+
+        1. 前往 [LINE Developers](https://developers.line.biz/zh-hant/) 並登入
+        2. 建立或選擇一個 Provider
+        3. 建立一個 Messaging API Channel
+        4. 在 Basic Settings 中可以找到：
+           - Channel Secret (頻道密鑰)
+        5. 在 Messaging API 設定中可以找到：
+           - Channel Access Token (頻道存取權杖)
+           - Bot Basic ID (機器人 ID)
+        """)
+        
+        st.info("請在 .env 文件中設定以下項目：")
+        for item in missing_settings:
+            st.markdown(f"- {item}")
+        
+        st.warning("""
+        注意事項：
+        - Channel Secret 和 Access Token 請妥善保管
+        - 設定完成後需要重新啟動應用程式
+        - Webhook URL 會在機器人啟動後自動設定
+        """)
+        return
+    
+    # 所有設定都存在時顯示資訊
+    with st.expander("帳號資訊 (Account Info)", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("啟動機器人", type="primary"):
-                if not all([Config.LINE_CHANNEL_SECRET, 
-                           Config.LINE_CHANNEL_ACCESS_TOKEN,
-                           Config.NGROK_AUTH_TOKEN]):
-                    st.error("❌ 請先完成帳號設定")
-                    return
-                    
-                try:
-                    ngrok = NgrokManager()
-                    webhook_url = ngrok.start()
-                    st.success(f"✅ 機器人已啟動\nWebhook URL: {webhook_url}")
-                except Exception as e:
-                    st.error(f"❌ 啟動失敗：{str(e)}")
+            st.info("基本資訊")
+            st.write(f"Channel Secret: {'*' * 10}")
+            st.write(f"Access Token: {'*' * 10}")
+            st.write(f"Bot ID: @{line_settings['LINE_BOT_ID']}")
+            st.success("✓ LINE Channel 已設定")
         
         with col2:
-            if st.button("停止機器人", type="secondary"):
-                try:
-                    # TODO: 實現停止功能
-                    st.warning("⚠️ 機器人已停止運行")
-                except Exception as e:
-                    st.error(f"❌ 停止失敗：{str(e)}")
+            st.info("Webhook 設定")
+            st.success("✓ Ngrok 已設定")
+            st.write(f"Auth Token: {'*' * 10}")
     
     # 好友管理
     with st.expander("好友管理 (Friend Management)", expanded=True):
@@ -533,21 +541,20 @@ def show_line_account_management():
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("""
-            ### 掃描 QR Code
-            1. 使用 LINE 掃描下方 QR Code
-            2. 加入此機器人為好友
-            3. 開始對話測試
+            ### 加入方式
+            1. 使用 LINE 掃描 QR Code
+            2. 點擊好友連結
+            3. 搜尋 Bot ID
             """)
-            # TODO: 顯示 QR Code 圖片
-            st.image("path/to/qr_code.png", width=200)
         
         with col2:
             st.markdown("""
             ### 好友連結
             點擊下方連結加入好友：
             """)
-            st.markdown("[加為好友](https://line.me/R/ti/p/@your_bot_id)")
-            st.info("Bot ID: @your_bot_id")
+            bot_id = line_settings['LINE_BOT_ID']
+            st.markdown(f"[加為好友](https://line.me/R/ti/p/@{bot_id})")
+            st.info(f"Bot ID: @{bot_id}")
     
     # 進階功能
     with st.expander("進階功能 (Advanced Features)", expanded=False):
@@ -570,6 +577,197 @@ def show_line_account_management():
             if st.form_submit_button("保存"):
                 st.info("自動回覆功能開發中...")
 
+def show_chat_test():
+    """顯示對話測試區域"""
+    # 初始化會話狀態
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        st.session_state.temp_files = []
+    
+    st.header("對話測試")
+    
+    # LINE 手機風格 CSS
+    st.markdown("""
+    <style>
+    /* 模擬手機外框 */
+    .phone-frame {
+        width: 360px;
+        height: 640px;
+        background: white;
+        border-radius: 30px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.2);
+        position: relative;
+        margin: 20px auto;
+        overflow: hidden;
+    }
+    
+    /* 聊天界面 */
+    .chat-container {
+        height: calc(100% - 120px);
+        overflow-y: auto;
+        background: #f0f0f0;
+        padding: 10px;
+    }
+    
+    /* 頂部狀態欄 */
+    .chat-header {
+        height: 60px;
+        background: #00c300;
+        color: white;
+        display: flex;
+        align-items: center;
+        padding: 0 15px;
+        position: sticky;
+        top: 0;
+    }
+    
+    /* 底部輸入欄 */
+    .chat-input {
+        height: 60px;
+        background: white;
+        border-top: 1px solid #ddd;
+        position: sticky;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+    }
+    
+    /* 上傳按鈕 */
+    .upload-button {
+        width: 40px;
+        height: 40px;
+        background: #f0f0f0;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        margin-right: 10px;
+    }
+    
+    /* 訊息樣式 */
+    .message {
+        margin: 10px 0;
+        max-width: 80%;
+        clear: both;
+    }
+    
+    .user-message {
+        float: right;
+        background: #00c300;
+        color: white;
+        border-radius: 20px;
+        padding: 10px 15px;
+    }
+    
+    .assistant-message {
+        float: left;
+        background: white;
+        border-radius: 20px;
+        padding: 10px 15px;
+    }
+    
+    /* 彈出視窗 */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+    }
+    
+    .modal-content {
+        background: white;
+        width: 80%;
+        max-width: 500px;
+        margin: 100px auto;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # 模擬手機界面
+    chat_container = st.container()
+    with chat_container:
+        # 顯示對話歷史
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+    
+    # 處理訊息輸入
+    if prompt := st.chat_input("輸入訊息..."):
+        # 添加用戶訊息
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # 生成回應
+        with st.chat_message("assistant"):
+            with st.spinner("思考中..."):
+                response = handle_message(prompt)
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+
+def handle_message(message: str) -> str:
+    """處理發送的訊息"""
+    try:
+        # 創建資料庫會話
+        db = SessionLocal()
+        conversation_manager = ConversationManager(db)
+        
+        # 使用 asyncio 運行異步函數
+        async def get_response():
+            return await conversation_manager.handle_message(
+                line_user_id="test_user",
+                message=message,
+                role_id="fk_helper"  # 使用預設角色
+            )
+        
+        # 運行異步函數
+        response = asyncio.run(get_response())
+        return response
+        
+    except Exception as e:
+        logger.error(f"處理訊息時發生錯誤：{str(e)}")
+        return f"抱歉，處理訊息時發生錯誤：{str(e)}"
+    finally:
+        db.close()
+
+def handle_uploaded_file(file):
+    """處理上傳的文件"""
+    try:
+        # 創建臨時文件夾
+        temp_dir = Path("temp_uploads")
+        temp_dir.mkdir(exist_ok=True)
+        
+        # 保存文件
+        file_path = temp_dir / file.name
+        with open(file_path, "wb") as f:
+            f.write(file.getbuffer())
+        
+        # 記錄臨時文件
+        st.session_state.temp_files.append(str(file_path))
+        
+        # 根據文件類型返回不同訊息
+        file_type = file.type
+        if file_type.startswith('image/'):
+            return f"[圖片: {file.name}] (圖片辨識功能開發中)"
+        elif file_type.startswith('audio/'):
+            return f"[音訊: {file.name}] (語音辨識功能開發中)"
+        elif file_type.startswith('video/'):
+            return f"[影片: {file.name}] (影片處理功能開發中)"
+        else:
+            return f"[檔案: {file.name}]"
+            
+    except Exception as e:
+        logger.error(f"處理文件時發生錯誤：{str(e)}")
+        return f"處理文件時發生錯誤：{str(e)}"
+
 def main():
     st.set_page_config(
         page_title="Line AI Assistant - 管理介面",
@@ -581,13 +779,14 @@ def main():
     
     role_manager = RoleManager()
     
-    # 側邊欄
+    # 側邊欄選單
     st.sidebar.title("功能選單 (Menu)")
     menu = st.sidebar.selectbox(
         "選擇功能 (Select Function)",
         ["系統狀態 (System Status)", 
          "AI 模型設定 (AI Model Settings)", 
          "LINE 官方帳號管理 (LINE Official Account)",
+         "對話測試 (Chat Test)",  # 添加對話測試選項
          "對話角色管理 (Chat Role Management)",
          "文件管理 (Document Management)"]
     )
@@ -595,9 +794,11 @@ def main():
     if "系統狀態" in menu:
         show_system_status()
     elif "AI 模型設定" in menu:
-        show_api_settings()  # 原本的 API Keys 設定
+        show_api_settings()
     elif "LINE 官方帳號管理" in menu:
-        show_line_account_management()  # 新的 LINE 管理界面
+        show_line_account_management()
+    elif "對話測試" in menu:
+        show_chat_test()  # 添加對話測試功能
     elif "對話角色管理" in menu:
         show_role_management(role_manager)
     elif "文件管理" in menu:
