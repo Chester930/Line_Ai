@@ -7,6 +7,7 @@ from shared.utils.role_manager import RoleManager
 from shared.utils.ngrok_manager import NgrokManager
 from shared.ai.conversation_manager import ConversationManager
 from shared.database.database import SessionLocal
+from shared.config.config import Config
 from pathlib import Path
 from dotenv import dotenv_values
 
@@ -74,7 +75,8 @@ def show_role_management(role_manager):
                     help="允許使用網路資訊回答問題"
                 )
             
-            if st.form_submit_button("創建角色 (Create)"):
+            submitted = st.form_submit_button("創建角色 (Create)")
+            if submitted:
                 settings = {
                     "temperature": temperature,
                     "top_p": top_p,
@@ -97,77 +99,96 @@ def show_role_management(role_manager):
     
     for role_id, role in roles.items():
         with st.expander(f"{role.name} ({role_id})", expanded=False):
-            with st.form(f"edit_role_{role_id}"):
-                st.write("基本資訊：")
-                name = st.text_input("名稱 (Name)", value=role.name)
-                description = st.text_area("描述 (Description)", value=role.description)
-                prompt = st.text_area("提示詞 (Prompt)", value=role.prompt)
-                
-                st.write("參數設定：")
-                col1, col2 = st.columns(2)
-                with col1:
-                    temperature = st.slider(
-                        "溫度 (Temperature)",
-                        0.0, 1.0,
-                        value=role.settings.get('temperature', 0.7)
-                    )
-                    max_tokens = st.number_input(
-                        "最大 Token 數 (Max Tokens)",
-                        100, 4000,
-                        value=role.settings.get('max_tokens', 1000)
-                    )
-                with col2:
-                    top_p = st.slider(
-                        "Top P",
-                        0.0, 1.0,
-                        value=role.settings.get('top_p', 0.9)
-                    )
-                    web_search = st.checkbox(
-                        "啟用網路搜尋 (Web Search)",
-                        value=role.settings.get('web_search', False)
-                    )
-                
-                # 測試對話
-                if st.button("測試對話 (Test Chat)", key=f"test_{role_id}"):
-                    with st.spinner("正在準備測試..."):
-                        try:
-                            db = SessionLocal()
-                            conversation_manager = ConversationManager(db)
-                            test_message = "你好，請簡單介紹一下你自己。"
-                            
-                            response = conversation_manager.handle_message(
-                                "admin_test",
-                                test_message,
-                                role_id
-                            )
-                            
-                            st.write("測試對話：")
-                            st.write(f"問：{test_message}")
-                            st.write(f"答：{response}")
-                        except Exception as e:
-                            st.error(f"測試失敗：{str(e)}")
-                        finally:
-                            db.close()
-                
-                col3, col4 = st.columns(2)
-                with col3:
-                    if st.form_submit_button("更新 (Update)"):
-                        settings = {
-                            "temperature": temperature,
-                            "top_p": top_p,
-                            "max_tokens": max_tokens,
-                            "web_search": web_search
-                        }
-                        if role_manager.update_role(
-                            role_id, name, description, prompt, settings
-                        ):
-                            st.success("✅ 角色已更新")
+            # 基本信息顯示
+            st.write("當前設定：")
+            st.json({
+                "名稱": role.name,
+                "描述": role.description,
+                "提示詞": role.prompt,
+                "設定": role.settings
+            })
+            
+            # 測試對話按鈕
+            if st.button("測試對話 (Test Chat)", key=f"test_{role_id}"):
+                with st.spinner("正在準備測試..."):
+                    try:
+                        db = SessionLocal()
+                        conversation_manager = ConversationManager(db)
+                        test_message = "你好，請簡單介紹一下你自己。"
+                        
+                        response = conversation_manager.handle_message(
+                            "admin_test",
+                            test_message,
+                            role_id
+                        )
+                        
+                        st.write("測試對話：")
+                        st.write(f"問：{test_message}")
+                        st.write(f"答：{response}")
+                    except Exception as e:
+                        st.error(f"測試失敗：{str(e)}")
+                    finally:
+                        db.close()
+            
+            # 編輯按鈕
+            if st.button("編輯 (Edit)", key=f"edit_{role_id}"):
+                st.session_state[f"editing_{role_id}"] = True
+            
+            # 編輯表單
+            if st.session_state.get(f"editing_{role_id}", False):
+                with st.form(f"edit_role_{role_id}"):
+                    name = st.text_input("名稱 (Name)", value=role.name)
+                    description = st.text_area("描述 (Description)", value=role.description)
+                    prompt = st.text_area("提示詞 (Prompt)", value=role.prompt)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        temperature = st.slider(
+                            "溫度 (Temperature)",
+                            0.0, 1.0,
+                            value=role.settings.get('temperature', 0.7)
+                        )
+                        max_tokens = st.number_input(
+                            "最大 Token 數 (Max Tokens)",
+                            100, 4000,
+                            value=role.settings.get('max_tokens', 1000)
+                        )
+                    with col2:
+                        top_p = st.slider(
+                            "Top P",
+                            0.0, 1.0,
+                            value=role.settings.get('top_p', 0.9)
+                        )
+                        web_search = st.checkbox(
+                            "啟用網路搜尋 (Web Search)",
+                            value=role.settings.get('web_search', False)
+                        )
+                    
+                    col3, col4 = st.columns(2)
+                    with col3:
+                        if st.form_submit_button("更新 (Update)"):
+                            settings = {
+                                "temperature": temperature,
+                                "top_p": top_p,
+                                "max_tokens": max_tokens,
+                                "web_search": web_search
+                            }
+                            if role_manager.update_role(
+                                role_id, name, description, prompt, settings
+                            ):
+                                st.success("✅ 角色已更新")
+                                st.session_state[f"editing_{role_id}"] = False
+                                st.experimental_rerun()
+                            else:
+                                st.error("❌ 更新失敗")
+                    
+                    with col4:
+                        if st.form_submit_button("取消 (Cancel)"):
+                            st.session_state[f"editing_{role_id}"] = False
                             st.experimental_rerun()
-                        else:
-                            st.error("❌ 更新失敗")
-                
-                with col4:
-                    if st.form_submit_button("刪除 (Delete)", type="primary"):
+            
+            # 刪除按鈕
+            if st.button("刪除 (Delete)", key=f"delete_{role_id}", type="primary"):
                         if role_manager.delete_role(role_id):
                             st.success("✅ 角色已刪除")
                             st.experimental_rerun()
@@ -177,61 +198,110 @@ def show_role_management(role_manager):
 def show_api_settings():
     st.header("API Keys 設定 (API Settings)")
     
+    # 定義各 API 提供商的模型
+    MODEL_OPTIONS = {
+        "Google": {
+            "api_key": "GOOGLE_API_KEY",
+            "models": ["gemini-pro", "gemini-pro-vision"],
+            "description": "Gemini 系列模型"
+        },
+        "OpenAI": {
+            "api_key": "OPENAI_API_KEY",
+            "models": ["gpt-3.5-turbo", "gpt-4", "gpt-4-vision"],
+            "description": "GPT 系列模型"
+        },
+        "Anthropic": {
+            "api_key": "CLAUDE_API_KEY",
+            "models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
+            "description": "Claude 系列模型"
+        }
+    }
+    
     with st.form("api_settings"):
-        st.subheader("Google AI")
-        google_api_key = st.text_input(
-            "Google API Key",
-            value=Config.GOOGLE_API_KEY or "",
-            type="password",
-            help="用於 Gemini 模型"
-        )
+        active_providers = []
+        api_configs = {}
         
-        st.subheader("OpenAI")
-        openai_api_key = st.text_input(
-            "OpenAI API Key",
-            value=Config.OPENAI_API_KEY or "",
-            type="password",
-            help="用於 GPT-3.5/GPT-4 模型"
-        )
+        # 為每個提供商創建一個展開區
+        for provider, config in MODEL_OPTIONS.items():
+            with st.expander(f"{provider} API 設定", expanded=True):
+                st.write(config["description"])
+                
+                # API Key 輸入
+                api_key = st.text_input(
+                    f"{provider} API Key",
+                    value=getattr(Config, config["api_key"], "") or "",
+                    type="password",
+                    help=f"輸入 {provider} API Key"
+                )
+                
+                if api_key:
+                    active_providers.append(provider)
+                    
+                    # 選擇要啟用的模型
+                    enabled_models = st.multiselect(
+                        "啟用的模型",
+                        options=config["models"],
+                        default=[config["models"][0]],
+                        help=f"選擇要啟用的 {provider} 模型"
+                    )
+                    
+                    api_configs[provider] = {
+                        "api_key": api_key,
+                        "enabled_models": enabled_models
+                    }
         
-        st.subheader("Anthropic")
-        claude_api_key = st.text_input(
-            "Claude API Key",
-            value=Config.CLAUDE_API_KEY or "",
-            type="password",
-            help="用於 Claude 模型"
-        )
+        # 選擇默認模型（只能從已啟用的模型中選擇）
+        st.subheader("預設模型設定")
+        available_models = []
+        for provider in active_providers:
+            available_models.extend(api_configs[provider]["enabled_models"])
         
-        # 模型選擇
-        st.subheader("預設模型設定 (Default Model Settings)")
-        default_model = st.selectbox(
-            "選擇預設模型",
-            options=["gemini-pro", "gpt-3.5-turbo", "gpt-4", "claude-3-opus"],
-            index=0,
-            help="設定系統默認使用的 AI 模型"
-        )
+        if available_models:
+            default_model = st.selectbox(
+                "選擇預設模型",
+                options=available_models,
+                help="設定系統默認使用的 AI 模型"
+            )
+        else:
+            st.warning("⚠️ 請至少設定一個 API Key 並啟用相應的模型")
+            default_model = None
         
-        if st.form_submit_button("保存設定 (Save Settings)"):
+        # 添加提交按鈕
+        submitted = st.form_submit_button("保存設定")
+        
+        if submitted:
             try:
-                # 更新 .env 文件
-                env_updates = {
-                    "GOOGLE_API_KEY": google_api_key,
-                    "OPENAI_API_KEY": openai_api_key,
-                    "CLAUDE_API_KEY": claude_api_key,
-                    "DEFAULT_MODEL": default_model
-                }
+                # 準備更新的設定
+                env_updates = {}
                 
+                # 更新 API Keys
+                for provider, config in MODEL_OPTIONS.items():
+                    api_key = api_configs.get(provider, {}).get("api_key", "")
+                    if api_key:
+                        env_updates[config["api_key"]] = api_key
+                        
+                        # 保存已啟用的模型
+                        enabled_models = api_configs[provider]["enabled_models"]
+                        env_updates[f"{provider.upper()}_ENABLED_MODELS"] = ",".join(enabled_models)
+                
+                # 更新默認模型
+                if default_model:
+                    env_updates["DEFAULT_MODEL"] = default_model
+                
+                # 保存到 .env 文件
                 update_env_file(env_updates)
-                st.success("✅ API Keys 已更新")
+                st.success("✅ 設定已更新")
                 
-                # 顯示模型可用性
-                st.write("模型可用性測試：")
-                if google_api_key:
-                    test_gemini(google_api_key)
-                if openai_api_key:
-                    test_openai(openai_api_key)
-                if claude_api_key:
-                    test_claude(claude_api_key)
+                # 測試已設定的 API
+                st.write("正在測試 API 連接...")
+                for provider in active_providers:
+                    api_key = api_configs[provider]["api_key"]
+                    if provider == "Google":
+                        test_gemini(api_key)
+                    elif provider == "OpenAI":
+                        test_openai(api_key)
+                    elif provider == "Anthropic":
+                        test_claude(api_key)
                     
             except Exception as e:
                 st.error(f"❌ 保存失敗：{str(e)}")
@@ -291,6 +361,118 @@ def test_claude(api_key: str):
     except Exception as e:
         st.error(f"❌ Claude API 測試失敗：{str(e)}")
 
+def show_line_account_management():
+    st.header("LINE 官方帳號管理")
+    
+    # 基本設定
+    with st.expander("帳號設定 (Account Settings)", expanded=True):
+        with st.form("line_account_settings"):
+            st.subheader("Channel 設定")
+            
+            # LINE API 設定
+            channel_secret = st.text_input(
+                "Channel Secret",
+                value=getattr(Config, 'LINE_CHANNEL_SECRET', '') or "",
+                type="password",
+                help="從 LINE Developers 取得的 Channel Secret"
+            )
+            
+            channel_token = st.text_input(
+                "Channel Access Token",
+                value=getattr(Config, 'LINE_CHANNEL_ACCESS_TOKEN', '') or "",
+                type="password",
+                help="從 LINE Developers 取得的 Channel Access Token"
+            )
+            
+            # Webhook 設定
+            ngrok_token = st.text_input(
+                "Ngrok Auth Token",
+                value=getattr(Config, 'NGROK_AUTH_TOKEN', '') or "",
+                type="password",
+                help="用於設定 Webhook URL"
+            )
+            
+            if st.form_submit_button("保存設定"):
+                try:
+                    env_updates = {
+                        "LINE_CHANNEL_SECRET": channel_secret,
+                        "LINE_CHANNEL_ACCESS_TOKEN": channel_token,
+                        "NGROK_AUTH_TOKEN": ngrok_token
+                    }
+                    update_env_file(env_updates)
+                    st.success("✅ 設定已更新")
+                except Exception as e:
+                    st.error(f"❌ 保存失敗：{str(e)}")
+    
+    # 機器人控制
+    with st.expander("機器人控制 (Bot Control)", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("啟動機器人", type="primary"):
+                if not all([Config.LINE_CHANNEL_SECRET, 
+                           Config.LINE_CHANNEL_ACCESS_TOKEN,
+                           Config.NGROK_AUTH_TOKEN]):
+                    st.error("❌ 請先完成帳號設定")
+                    return
+                    
+                try:
+                    ngrok = NgrokManager()
+                    webhook_url = ngrok.start()
+                    st.success(f"✅ 機器人已啟動\nWebhook URL: {webhook_url}")
+                except Exception as e:
+                    st.error(f"❌ 啟動失敗：{str(e)}")
+        
+        with col2:
+            if st.button("停止機器人", type="secondary"):
+                try:
+                    # TODO: 實現停止功能
+                    st.warning("⚠️ 機器人已停止運行")
+                except Exception as e:
+                    st.error(f"❌ 停止失敗：{str(e)}")
+    
+    # 好友管理
+    with st.expander("好友管理 (Friend Management)", expanded=True):
+        st.subheader("加入好友")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("""
+            ### 掃描 QR Code
+            1. 使用 LINE 掃描下方 QR Code
+            2. 加入此機器人為好友
+            3. 開始對話測試
+            """)
+            # TODO: 顯示 QR Code 圖片
+            st.image("path/to/qr_code.png", width=200)
+        
+        with col2:
+            st.markdown("""
+            ### 好友連結
+            點擊下方連結加入好友：
+            """)
+            st.markdown("[加為好友](https://line.me/R/ti/p/@your_bot_id)")
+            st.info("Bot ID: @your_bot_id")
+    
+    # 進階功能
+    with st.expander("進階功能 (Advanced Features)", expanded=False):
+        st.subheader("群發訊息")
+        with st.form("broadcast_message"):
+            message = st.text_area("訊息內容")
+            target = st.radio(
+                "發送對象",
+                ["所有好友", "特定群組", "指定好友"]
+            )
+            
+            if st.form_submit_button("發送"):
+                st.info("群發功能開發中...")
+        
+        st.subheader("自動回覆設定")
+        with st.form("auto_reply"):
+            enabled = st.checkbox("啟用自動回覆")
+            welcome_msg = st.text_area("歡迎訊息")
+            
+            if st.form_submit_button("保存"):
+                st.info("自動回覆功能開發中...")
+
 def main():
     st.set_page_config(
         page_title="Line AI Assistant - 管理介面",
@@ -307,30 +489,23 @@ def main():
     menu = st.sidebar.selectbox(
         "選擇功能 (Select Function)",
         ["系統狀態 (System Status)", 
-         "API Keys 設定 (API Settings)", 
-         "角色管理 (Role Management)",
-         "文件管理 (Document Management)",
-         "專案控制 (Project Control)"]
+         "AI 模型設定 (AI Model Settings)", 
+         "LINE 官方帳號管理 (LINE Official Account)",
+         "對話角色管理 (Chat Role Management)",
+         "文件管理 (Document Management)"]
     )
     
     if "系統狀態" in menu:
         show_system_status()
-    elif "API Keys" in menu:
-        show_api_settings()
-    elif "角色管理" in menu:
+    elif "AI 模型設定" in menu:
+        show_api_settings()  # 原本的 API Keys 設定
+    elif "LINE 官方帳號管理" in menu:
+        show_line_account_management()  # 新的 LINE 管理界面
+    elif "對話角色管理" in menu:
         show_role_management(role_manager)
     elif "文件管理" in menu:
         st.header("文件管理 (Document Management)")
         st.info("📝 文件管理功能開發中...")
-    elif "專案控制" in menu:
-        st.header("專案控制 (Project Control)")
-        if st.button("啟動 LINE Bot (Start LINE Bot)"):
-            try:
-                ngrok = NgrokManager()
-                webhook_url = ngrok.start()
-                st.success(f"✅ LINE Bot 已啟動\nWebhook URL: {webhook_url}")
-            except Exception as e:
-                st.error(f"❌ 啟動失敗：{str(e)}")
 
 if __name__ == "__main__":
     main() 
