@@ -1,16 +1,24 @@
 import streamlit as st
 import sys
 import os
+import time
+from pathlib import Path
+from dotenv import dotenv_values
+import asyncio
+import logging
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared.utils.role_manager import RoleManager
 from shared.utils.ngrok_manager import NgrokManager
 from shared.ai.conversation_manager import ConversationManager
 from shared.database.database import SessionLocal
+from shared.database.models import User
 from shared.config.config import Config
-from pathlib import Path
-from dotenv import dotenv_values
-import asyncio
+from shared.ai.chat_tester import ChatTester
+
+# 設置 logger
+logger = logging.getLogger(__name__)
 
 def show_system_status():
     st.header("系統狀態")
@@ -579,119 +587,139 @@ def show_line_account_management():
 
 def show_chat_test():
     """顯示對話測試區域"""
+    st.header("對話測試")
+    
     # 初始化會話狀態
     if "messages" not in st.session_state:
         st.session_state.messages = []
-        st.session_state.temp_files = []
+    if "chat_tester" not in st.session_state:
+        st.session_state.chat_tester = ChatTester()
     
-    st.header("對話測試")
+    # 側邊欄配置
+    with st.sidebar:
+        st.subheader("對話設定")
+        
+        # 獲取所有可用角色
+        role_manager = RoleManager()
+        roles = role_manager.list_roles()
+        
+        if not roles:
+            st.warning("⚠️ 尚未設定任何角色，請先在「對話角色管理」中創建角色")
+            return
+        
+        # 角色選擇
+        selected_role = st.selectbox(
+            "選擇角色",
+            options=list(roles.keys()),
+            format_func=lambda x: f"{roles[x].name} ({x})",
+            key="selected_role"
+        )
+        
+        # 顯示角色資訊
+        role = roles[selected_role]
+        with st.expander("角色資訊", expanded=True):
+            st.text_area("角色描述", value=role.description, disabled=True)
+            st.text_area("系統提示詞", value=role.prompt, disabled=True)
+        
+        # AI 模型選擇
+        st.subheader("AI 模型")
+        
+        # 根據配置的 API Keys 確定可用的模型
+        available_models = []
+        
+        if Config.GOOGLE_API_KEY:
+            available_models.extend([
+                'gemini-pro',          # 文字模型
+                'gemini-pro-vision'    # 多模態模型
+            ])
+        
+        if Config.OPENAI_API_KEY:
+            available_models.extend([
+                'gpt-4-turbo-preview',  # GPT-4 Turbo
+                'gpt-4',                # GPT-4
+                'gpt-3.5-turbo',        # GPT-3.5
+                'gpt-3.5-turbo-16k'     # GPT-3.5 with larger context
+            ])
+        
+        if Config.CLAUDE_API_KEY:
+            available_models.extend([
+                'claude-3-opus-20240229',      # Claude 3 Opus
+                'claude-3-sonnet-20240229',    # Claude 3 Sonnet
+                'claude-3-haiku-20240229'      # Claude 3 Haiku
+            ])
+        
+        if not available_models:
+            st.warning("⚠️ 尚未設定任何 AI API Key，請先在「AI 模型設定」中配置 API")
+            return
+        
+        # 模型選擇
+        model = st.selectbox(
+            "選擇模型",
+            options=available_models,
+            help="根據已配置的 API 選擇要使用的 AI 模型",
+            key='model'
+        )
+        
+        # 顯示模型資訊
+        model_info = {
+            'gemini-pro': "Google 的文字處理模型，適合一般對話和分析",
+            'gemini-pro-vision': "支援圖像分析的多模態模型",
+            'gpt-4-turbo-preview': "最新的 GPT-4 模型，支援更長上下文",
+            'gpt-4': "強大的推理和創意能力",
+            'gpt-3.5-turbo': "快速響應，性價比高",
+            'gpt-3.5-turbo-16k': "支援更長文本輸入",
+            'claude-3-opus-20240229': "最強大的 Claude 模型，適合複雜任務",
+            'claude-3-sonnet-20240229': "平衡性能和速度",
+            'claude-3-haiku-20240229': "快速響應，適合簡單任務"
+        }
+        
+        if model in model_info:
+            st.info(model_info[model])
+        
+        # 根據選擇的模型顯示建議的參數範圍
+        model_params = {
+            'gemini-pro': {'temp_max': 1.0, 'tokens_max': 2048},
+            'gpt-4': {'temp_max': 2.0, 'tokens_max': 4096},
+            'claude-3-opus-20240229': {'temp_max': 1.0, 'tokens_max': 4096}
+            # ... 可以添加更多模型的參數設定
+        }
+        
+        # 獲取當前模型的參數範圍
+        current_model_params = model_params.get(
+            model,
+            {'temp_max': 1.0, 'tokens_max': 2000}  # 默認值
+        )
+        
+        # 參數調整
+        st.subheader("模型參數")
+        temperature = st.slider(
+            "Temperature (創造性)", 
+            min_value=0.0, 
+            max_value=current_model_params['temp_max'], 
+            value=min(role.settings.get('temperature', 0.7), current_model_params['temp_max']),
+            step=0.1,
+            help="較高的值會使輸出更加隨機，較低的值會使其更加集中和確定"
+        )
+        
+        top_p = st.slider(
+            "Top P (多樣性)",
+            min_value=0.0,
+            max_value=1.0,
+            value=role.settings.get('top_p', 0.9),
+            step=0.1,
+            help="控制回應的多樣性，較高的值會產生更多樣的回應"
+        )
+        
+        max_tokens = st.number_input(
+            "最大 Tokens",
+            min_value=100,
+            max_value=current_model_params['tokens_max'],
+            value=min(role.settings.get('max_tokens', 1000), current_model_params['tokens_max']),
+            step=100,
+            help="控制回應的最大長度"
+        )
     
-    # LINE 手機風格 CSS
-    st.markdown("""
-    <style>
-    /* 模擬手機外框 */
-    .phone-frame {
-        width: 360px;
-        height: 640px;
-        background: white;
-        border-radius: 30px;
-        box-shadow: 0 0 20px rgba(0,0,0,0.2);
-        position: relative;
-        margin: 20px auto;
-        overflow: hidden;
-    }
-    
-    /* 聊天界面 */
-    .chat-container {
-        height: calc(100% - 120px);
-        overflow-y: auto;
-        background: #f0f0f0;
-        padding: 10px;
-    }
-    
-    /* 頂部狀態欄 */
-    .chat-header {
-        height: 60px;
-        background: #00c300;
-        color: white;
-        display: flex;
-        align-items: center;
-        padding: 0 15px;
-        position: sticky;
-        top: 0;
-    }
-    
-    /* 底部輸入欄 */
-    .chat-input {
-        height: 60px;
-        background: white;
-        border-top: 1px solid #ddd;
-        position: sticky;
-        bottom: 0;
-        display: flex;
-        align-items: center;
-        padding: 0 10px;
-    }
-    
-    /* 上傳按鈕 */
-    .upload-button {
-        width: 40px;
-        height: 40px;
-        background: #f0f0f0;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        margin-right: 10px;
-    }
-    
-    /* 訊息樣式 */
-    .message {
-        margin: 10px 0;
-        max-width: 80%;
-        clear: both;
-    }
-    
-    .user-message {
-        float: right;
-        background: #00c300;
-        color: white;
-        border-radius: 20px;
-        padding: 10px 15px;
-    }
-    
-    .assistant-message {
-        float: left;
-        background: white;
-        border-radius: 20px;
-        padding: 10px 15px;
-    }
-    
-    /* 彈出視窗 */
-    .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 1000;
-    }
-    
-    .modal-content {
-        background: white;
-        width: 80%;
-        max-width: 500px;
-        margin: 100px auto;
-        padding: 20px;
-        border-radius: 10px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # 模擬手機界面
+    # 主要對話區域
     chat_container = st.container()
     with chat_container:
         # 顯示對話歷史
@@ -699,74 +727,82 @@ def show_chat_test():
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
     
-    # 處理訊息輸入
+    # 控制按鈕
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.session_state.messages:
+            if st.button("🗑️ 清除對話"):
+                st.session_state.messages = []
+                st.session_state.chat_tester.clear_history()
+                st.rerun()
+    
+    with col2:
+        # 文件上傳
+        uploaded_file = st.file_uploader(
+            "📎 上傳檔案",
+            type=['txt', 'pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg', 'mp3', 'wav'],
+            help="支援文件、圖片和音訊檔案"
+        )
+        
+        if uploaded_file:
+            if st.button("發送檔案"):
+                file_message = handle_uploaded_file(uploaded_file)
+                st.session_state.messages.append({"role": "user", "content": file_message})
+                with st.chat_message("user"):
+                    st.markdown(file_message)
+                
+                # 生成 AI 回應
+                with st.chat_message("assistant"):
+                    with st.spinner("分析檔案中..."):
+                        response = generate_response(file_message, role.prompt, {
+                            'model': model,
+                            'temperature': temperature,
+                            'top_p': top_p,
+                            'max_tokens': max_tokens
+                        })
+                        st.markdown(response)
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                st.rerun()
+    
+    # 訊息輸入
     if prompt := st.chat_input("輸入訊息..."):
         # 添加用戶訊息
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
-        # 生成回應
+        # 生成 AI 回應
         with st.chat_message("assistant"):
             with st.spinner("思考中..."):
-                response = handle_message(prompt)
+                response = generate_response(prompt, role.prompt, {
+                    'model': model,
+                    'temperature': temperature,
+                    'top_p': top_p,
+                    'max_tokens': max_tokens
+                })
                 st.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
 
-def handle_message(message: str) -> str:
-    """處理發送的訊息"""
+def generate_response(message: str, role_prompt: str, settings: dict) -> str:
+    """生成 AI 回應"""
     try:
-        # 創建資料庫會話
-        db = SessionLocal()
-        conversation_manager = ConversationManager(db)
+        chat_tester = st.session_state.chat_tester
         
         # 使用 asyncio 運行異步函數
         async def get_response():
-            return await conversation_manager.handle_message(
-                line_user_id="test_user",
-                message=message,
-                role_id="fk_helper"  # 使用預設角色
-            )
+            return await chat_tester.generate_response(
+            message=message,
+            role_prompt=role_prompt,
+            settings=settings
+        )
         
         # 運行異步函數
         response = asyncio.run(get_response())
         return response
         
     except Exception as e:
-        logger.error(f"處理訊息時發生錯誤：{str(e)}")
-        return f"抱歉，處理訊息時發生錯誤：{str(e)}"
-    finally:
-        db.close()
-
-def handle_uploaded_file(file):
-    """處理上傳的文件"""
-    try:
-        # 創建臨時文件夾
-        temp_dir = Path("temp_uploads")
-        temp_dir.mkdir(exist_ok=True)
-        
-        # 保存文件
-        file_path = temp_dir / file.name
-        with open(file_path, "wb") as f:
-            f.write(file.getbuffer())
-        
-        # 記錄臨時文件
-        st.session_state.temp_files.append(str(file_path))
-        
-        # 根據文件類型返回不同訊息
-        file_type = file.type
-        if file_type.startswith('image/'):
-            return f"[圖片: {file.name}] (圖片辨識功能開發中)"
-        elif file_type.startswith('audio/'):
-            return f"[音訊: {file.name}] (語音辨識功能開發中)"
-        elif file_type.startswith('video/'):
-            return f"[影片: {file.name}] (影片處理功能開發中)"
-        else:
-            return f"[檔案: {file.name}]"
-            
-    except Exception as e:
-        logger.error(f"處理文件時發生錯誤：{str(e)}")
-        return f"處理文件時發生錯誤：{str(e)}"
+        logger.error(f"生成回應時發生錯誤：{str(e)}")
+        return f"生成回應時發生錯誤：{str(e)}"
 
 def main():
     st.set_page_config(
