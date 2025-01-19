@@ -709,7 +709,7 @@ async def show_chat_test():
     
     # 設定區域
     with st.expander("對話設定 (Chat Settings)", expanded=True):
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             # 獲取已設定的模型列表
@@ -767,6 +767,35 @@ async def show_chat_test():
                 "Top P",
                 0.0, 1.0,
                 value=roles[selected_role].settings['top_p'] if selected_role in roles else 0.9
+            )
+        
+        with col3:
+            # 插件設定
+            st.write("插件設定 (Plugin Settings)")
+            web_search = st.checkbox(
+                "網路搜尋 (Web Search)",
+                value=roles[selected_role].settings.get('plugins', {}).get('web_search', {}).get('enabled', False) if selected_role in roles else False,
+                help="啟用網路搜尋功能"
+            )
+            
+            if web_search:
+                web_search_weight = st.slider(
+                    "搜尋參考權重",
+                    0.0, 1.0,
+                    value=roles[selected_role].settings.get('plugins', {}).get('web_search', {}).get('weight', 0.3) if selected_role in roles else 0.3
+                )
+            
+            knowledge_base = st.checkbox(
+                "知識庫 (Knowledge Base)",
+                value=roles[selected_role].settings.get('plugins', {}).get('knowledge_base', {}).get('enabled', False) if selected_role in roles else False,
+                help="啟用知識庫功能"
+            )
+            
+            if knowledge_base:
+                kb_weight = st.slider(
+                    "知識庫參考權重",
+                    0.0, 1.0,
+                    value=roles[selected_role].settings.get('plugins', {}).get('knowledge_base', {}).get('weight', 0.5) if selected_role in roles else 0.5
             )
     
     # 顯示對話歷史
@@ -898,6 +927,73 @@ def get_webhook_url():
         pass
     return None
 
+def show_plugins_management():
+    st.header("插件功能列表 (Plugin Features)")
+    
+    # 網路搜尋插件
+    with st.expander("網路搜尋 (Web Search)", expanded=True):
+        st.markdown("""
+        ### 網路搜尋插件 (Web Search Plugin)
+        
+        允許 AI 助手在回答問題時搜尋並參考網路上的最新資訊。
+        
+        **功能特點：**
+        - 即時獲取網路資訊
+        - 可調整搜尋結果的參考權重
+        - 支援多種搜尋引擎
+        - 可限制搜尋範圍和結果數量
+        
+        **使用場景：**
+        - 回答需要最新資訊的問題
+        - 提供有來源依據的資訊
+        - 補充專業知識
+        """)
+    
+    # 知識庫插件
+    with st.expander("知識庫 (Knowledge Base)", expanded=True):
+        st.markdown("""
+        ### 知識庫插件 (Knowledge Base Plugin)
+        
+        讓 AI 助手能夠存取和使用自定義的知識庫資源。
+        
+        **功能特點：**
+        - 支援多種知識來源（文件庫、FAQ、自定義資料）
+        - 可調整知識參考權重
+        - 支援文件更新和管理
+        - 自動相關性匹配
+        
+        **使用場景：**
+        - 回答特定領域問題
+        - 提供標準化答案
+        - 確保回答符合公司政策
+        """)
+    
+    # 即將推出的插件
+    with st.expander("即將推出 (Coming Soon)", expanded=True):
+        st.markdown("""
+        ### 開發中的插件 (Plugins in Development)
+        
+        1. **多媒體處理插件 (Multimedia Processing)**
+           - 圖片分析和生成
+           - 語音轉文字
+           - 文字轉語音
+        
+        2. **資料分析插件 (Data Analysis)**
+           - 數據視覺化
+           - 統計分析
+           - 報表生成
+        
+        3. **工具集成插件 (Tool Integration)**
+           - 日程管理
+           - 天氣查詢
+           - 翻譯服務
+        
+        4. **自動化工作流插件 (Workflow Automation)**
+           - 任務排程
+           - 提醒通知
+           - 數據同步
+        """)
+
 def main():
     st.set_page_config(
         page_title="Line AI Assistant - 管理介面",
@@ -919,6 +1015,7 @@ def main():
          "對話測試 (Chat Test)",
          "共用 Prompts 管理 (Shared Prompts)",
          "角色管理 (Role Management)",
+         "插件功能列表 (Plugin Features)",
          "文件管理 (Document Management)"]
     )
     
@@ -934,6 +1031,8 @@ def main():
         show_prompts_management(role_manager)
     elif "角色管理" in menu:
         show_role_management(role_manager)
+    elif "插件功能列表" in menu:
+        show_plugins_management()
     elif "文件管理" in menu:
         st.header("文件管理 (Document Management)")
         st.info("📝 文件管理功能開發中...")
