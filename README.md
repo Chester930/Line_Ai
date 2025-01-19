@@ -75,56 +75,60 @@ python scripts/setup.py
 
 ## 運行方式
 
-系統提供三種運行模式，可根據需求選擇：
+系統提供三種運行模式，需要使用兩個終端機視窗來運行：
 
+### 終端機視窗 1 - LINE Bot 服務
+```bash
 # 啟動虛擬環境
 venv\Scripts\activate
 
-### 1. 管理員介面（推薦）
+# 啟動 LINE Bot 服務
+python run.py --mode bot
+
+# 成功啟動後會顯示：
+# 啟動 LINE Bot 服務...
+# === LINE Bot Webhook URL ===
+# https://xxxx-xxx-xxx-xxx-xxx.ngrok.io/webhook
+#  * Running on http://127.0.0.1:5000
+```
+
+### 終端機視窗 2 - 管理介面
 ```bash
+# 啟動虛擬環境
+venv\Scripts\activate
+
+# 啟動管理介面
 python run.py --mode admin
-```
-- 主要功能：
-  - 系統設定和管理
-  - LINE Bot 的啟動/停止控制
-  - 角色管理和測試
-  - AI 模型設定
-- 特點：
-  - 整合了所有核心功能
-  - 可直接控制 LINE Bot
-  - 提供基本的測試功能
-- 適合：日常使用和管理
 
-### 2. LINE Bot 獨立模式
-```bash
-python run.py --mode app
+# 成功啟動後會顯示：
+# 啟動管理員介面...
+# You can now view your Streamlit app in your browser.
+# Local URL: http://localhost:8501
 ```
-- 主要功能：
-  - 純粹運行 LINE Bot 服務
-- 特點：
-  - 僅啟動必要服務
-  - 資源佔用較少
-  - 適合純後台運行
-- 適合：正式部署環境
 
-### 3. Studio 開發環境
-```bash
-streamlit run studio/studio_ui.py
-```
-- 主要功能：
-  - 專注於開發和測試
-  - 詳細的參數調整
-  - 完整的測試功能
-- 特點：
-  - 提供更多開發工具
-  - 可導出測試記錄
-  - 即時調整和測試
-- 適合：開發和調試階段
+### 運行模式說明
+
+1. LINE Bot 服務 (`--mode bot`)
+   - 啟動 Flask 伺服器
+   - 自動開啟 ngrok 服務
+   - 生成 Webhook URL
+   - 處理 LINE 訊息
+
+2. 管理員介面 (`--mode admin`)
+   - 系統設定和管理
+   - 查看 Webhook URL
+   - 角色和提示詞管理
+   - 對話測試功能
+
+3. Studio 開發環境 (`--mode studio`)
+   - 開發和測試工具
+   - 詳細的參數調整
+   - 測試記錄功能
 
 使用建議：
-- 一般使用者：使用管理員介面即可滿足大部分需求
-- 伺服器部署：使用 app 模式執行
-- 開發人員：使用 Studio 進行開發和測試
+- 本地開發：同時運行 bot 和 admin 模式
+- 正式部署：使用 PM2 或 Supervisor 管理 bot 服務
+- 開發測試：使用 studio 模式進行功能測試
 
 ## 開發指南
 
@@ -203,3 +207,61 @@ streamlit run studio/studio_ui.py
 3. 模型切換問題
    - 確認已在 .env 中設置對應的 API Key
    - 檢查模型是否在已啟用列表中
+
+## LINE Bot 設定說明
+
+### 1. 終端機1啟動 LINE Bot 服務
+```bash
+# 啟動虛擬環境
+venv\Scripts\activate
+# 啟動 LINE Bot 服務
+python run.py --mode bot
+```
+
+### 2. 終端機2開啟管理介面
+```bash
+# 啟動虛擬環境
+venv\Scripts\activate
+# 開啟管理介面
+python run.py --mode admin
+```
+
+### 2. LINE Developers 設定
+1. 前往 [LINE Developers Console](https://developers.line.biz/console/)
+2. 建立或選擇一個 Provider
+3. 建立一個 Messaging API Channel
+4. 在 Basic Settings 中可以找到：
+   - Channel Secret (頻道密鑰)
+5. 在 Messaging API 設定中可以找到：
+   - Channel Access Token (頻道存取權杖)
+   - Bot Basic ID (機器人 ID)
+
+### 3. Webhook 設定步驟
+1. 啟動 LINE Bot 服務後，會自動開啟 ngrok 並產生 Webhook URL
+2. 在管理介面的「LINE 官方帳號管理」中可以看到當前的 Webhook URL
+3. 將此 URL 設定到 LINE Developers Console：
+   - 進入你的 Channel
+   - 選擇 Messaging API 設定
+   - 將 Webhook URL 貼到「Webhook URL」欄位
+   - 開啟「Use webhook」選項
+   - 點擊「Verify」按鈕測試連接
+
+注意事項：
+- 每次重新啟動 LINE Bot 服務，ngrok 都會產生新的 URL
+- 需要重新設定 LINE Developers Console 的 Webhook URL
+- 建議在正式環境使用固定網域，避免頻繁更換 URL
+
+### 4. 本地開發設定
+1. 安裝 ngrok
+2. 在 .env 中設定 NGROK_AUTH_TOKEN
+3. LINE Bot 服務會自動管理 ngrok 的啟動和關閉
+4. 管理介面會顯示當前的 Webhook URL 和服務狀態
+
+### 5. 正式環境部署
+建議使用：
+- 固定網域
+- SSL 憑證
+- 反向代理（如 Nginx）
+- PM2 或 Supervisor 管理程序
+- 反向代理（如 Nginx）
+- PM2 或 Supervisor 管理程序

@@ -43,6 +43,7 @@ class Config:
         
         # Ngrok Settings
         self.NGROK_AUTH_TOKEN = os.getenv('NGROK_AUTH_TOKEN')
+        self.NGROK_REGION = os.getenv('NGROK_REGION', 'ap')
         
         # AI Model Settings
         self.MODEL_TEMPERATURE = float(os.getenv('MODEL_TEMPERATURE', '0.7'))
@@ -55,29 +56,35 @@ class Config:
         # Directories
         self.BASE_DIR = Path(__file__).parent.parent.parent
         self.DATA_DIR = self.BASE_DIR / 'data'
-        self.UPLOAD_DIR = self.BASE_DIR / 'uploads'
-        self.LOG_DIR = self.BASE_DIR / 'logs'
+        self.CONFIG_DIR = self.DATA_DIR / 'config'
+        self.UPLOAD_DIR = self.DATA_DIR / 'uploads'
+        self.LOG_DIR = self.DATA_DIR / 'logs'
+        
+        # 確保必要目錄存在
+        for directory in [self.DATA_DIR, self.CONFIG_DIR, self.UPLOAD_DIR, self.LOG_DIR]:
+            os.makedirs(directory, exist_ok=True)
     
-    @classmethod
-    def validate(cls):
+    def validate(self):
         """驗證必要的配置"""
         required = [
-            'LINE_CHANNEL_SECRET',
-            'LINE_CHANNEL_ACCESS_TOKEN',
-            'NGROK_AUTH_TOKEN'
+            ('LINE_CHANNEL_SECRET', self.LINE_CHANNEL_SECRET),
+            ('LINE_CHANNEL_ACCESS_TOKEN', self.LINE_CHANNEL_ACCESS_TOKEN),
+            ('NGROK_AUTH_TOKEN', self.NGROK_AUTH_TOKEN)
         ]
         
         missing = []
-        for key in required:
-            if not getattr(cls, key):
-                missing.append(key)
+        for name, value in required:
+            if not value:
+                missing.append(name)
         
         # 檢查是否至少有一個 AI API
-        if not any([cls.GOOGLE_API_KEY, cls.OPENAI_API_KEY, cls.CLAUDE_API_KEY]):
+        if not any([self.GOOGLE_API_KEY, self.OPENAI_API_KEY, self.CLAUDE_API_KEY]):
             missing.append('需要至少設定一個 AI API Key')
         
         if missing:
-            raise ValueError(f"Missing required configuration: {', '.join(missing)}")
+            raise ValueError(f"缺少必要的設定: {', '.join(missing)}")
+        
+        return True
     
     @classmethod
     def update_api_key(cls, provider: str, api_key: str):

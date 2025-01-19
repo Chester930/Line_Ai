@@ -6,6 +6,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 import asyncio
 import logging
+import requests
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -40,109 +41,177 @@ def show_system_status():
         st.write("- API 連接：正常")
         st.write("- Webhook：未啟動")
 
+def show_prompts_management(role_manager):
+    st.header("共用 Prompts 管理")
+    
+    # 顯示預設和自定義的 Prompts
+    categories = [
+        "語言設定 (Language)", 
+        "語氣風格 (Tone)", 
+        "輸出格式 (Format)", 
+        "專業領域 (Expertise)", 
+        "性格特徵 (Personality)"
+    ]
+    
+    for category in categories:
+        with st.expander(f"{category}", expanded=False):
+            # 獲取當前類別的英文標識（用於後端處理）
+            category_id = category.split(" (")[1].rstrip(")")
+            prompts = role_manager.get_prompts_by_category(category_id)
+            
+            # 顯示預設和自定義的 prompts
+            st.subheader("預設 Prompts")
+            default_prompts = {k: v for k, v in prompts.items() if v.get('is_default')}
+            for prompt_id, data in default_prompts.items():
+                with st.expander(f"{data['description']}", expanded=False):
+                    st.text_area("內容", value=data['content'], disabled=True)
+                    st.write(f"使用次數: {data['usage_count']}")
+            
+            st.subheader("自定義 Prompts")
+            custom_prompts = {k: v for k, v in prompts.items() if not v.get('is_default')}
+            if custom_prompts:
+                for prompt_id, data in custom_prompts.items():
+                    with st.expander(f"{data['description']}", expanded=False):
+                        st.text_area("內容", value=data['content'], disabled=True)
+                        st.write(f"使用次數: {data['usage_count']}")
+                        if st.button("刪除", key=f"delete_{prompt_id}"):
+                            if role_manager.delete_prompt(prompt_id):
+                                st.success("已刪除")
+                                st.experimental_rerun()
+            else:
+                st.info("尚未創建自定義 Prompts")
+            
+            # 創建新的自定義 prompt
+            st.subheader(f"創建新的 {category.split(' (')[0]}")
+            with st.form(f"create_prompt_{category_id}"):
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    prompt_id = st.text_input(
+                        "Prompt ID",
+                        help="唯一標識符，例如：chinese_language"
+                    )
+                    description = st.text_input(
+                        "描述 (Description)",
+                        help="簡短描述這個 prompt 的用途"
+                    )
+                with col2:
+                    prompt_type = st.selectbox(
+                        "類型 (Type)",
+                        ["Language", "Tone", "Personality", "Expertise", "Others"]
+                    )
+                
+                content = st.text_area(
+                    "Prompt 內容",
+                    height=150,
+                    help="prompt 的具體內容",
+                    placeholder=get_prompt_template(prompt_type)
+                )
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    example_input = st.text_input(
+                        "測試輸入 (Test Input)",
+                        help="輸入一段測試文字來預覽效果"
+                    )
+                with col2:
+                    if example_input:
+                        st.write("預期效果預覽：")
+                        st.write(content.replace("{input}", example_input))
+                
+                if st.form_submit_button("創建 Prompt"):
+                    if prompt_id and content:
+                        if role_manager.create_prompt(
+                            prompt_id, 
+                            content, 
+                            description,
+                            prompt_type=prompt_type,
+                            category=category_id
+                        ):
+                            st.success("✅ Prompt 已創建")
+                            st.experimental_rerun()
+                        else:
+                            st.error("❌ 創建失敗，ID 可能已存在")
+                    else:
+                        st.warning("⚠️ 請填寫必要欄位")
+
 def show_role_management(role_manager):
+    """角色管理介面"""
     st.header("角色管理 (Role Management)")
     
-    # 導入預設角色
-    with st.expander("預設角色管理 (Default Roles)", expanded=True):
-        st.write("預設角色包含基本的對話設定和提示詞")
-        if st.button("導入預設角色 (Import Default Roles)"):
-            if role_manager.import_default_roles():
-                st.success("✅ 預設角色已導入")
+    # 創建新角色
+    st.subheader("創建新角色 (Create New Role)")
+    with st.form("create_role"):
+        st.write("請填寫新角色的基本資訊：")
+        role_id = st.text_input(
+            "角色ID (英文) (Role ID)",
+            help="唯一標識符，例如：custom_helper"
+        )
+        name = st.text_input(
+            "角色名稱 (Role Name)",
+            help="顯示名稱，例如：客服助手"
+        )
+        description = st.text_area(
+            "角色描述 (Description)",
+            help="角色的主要功能和特點"
+        )
+        
+        # 選擇共用 prompts
+        available_prompts = role_manager.get_available_prompts()
+        selected_prompts = st.multiselect(
+            "選擇共用 Prompts",
+            options=list(available_prompts.keys()),
+            format_func=lambda x: f"{x} - {available_prompts[x].get('description', '')}",
+            help="選擇要使用的共用 prompts"
+        )
+        
+        role_prompt = st.text_area(
+            "角色專屬提示詞 (Role Prompt)",
+            help="設定角色的特定行為和回應方式"
+        )
+        
+        st.write("進階設定：")
+        col1, col2 = st.columns(2)
+        with col1:
+            temperature = st.slider(
+                "溫度 (Temperature)", 
+                0.0, 1.0, 0.7,
+                help="控制回應的創造性，越高越有創意"
+            )
+            max_tokens = st.number_input(
+                "最大 Token 數 (Max Tokens)",
+                100, 4000, 1000,
+                help="單次回應的最大長度"
+            )
+        with col2:
+            top_p = st.slider(
+                "Top P",
+                0.0, 1.0, 0.9,
+                help="控制回應的多樣性"
+            )
+            web_search = st.checkbox(
+                "啟用網路搜尋 (Enable Web Search)",
+                help="允許使用網路資訊回答問題"
+            )
+        
+        submitted = st.form_submit_button("創建角色 (Create)")
+        if submitted:
+            settings = {
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+                "web_search": web_search
+            }
+            if role_manager.create_role(
+                role_id, name, description, role_prompt,
+                base_prompts=selected_prompts,
+                settings=settings
+            ):
+                st.success("✅ 角色已創建")
                 st.experimental_rerun()
             else:
-                st.error("❌ 導入失敗")
+                st.error("❌ 創建失敗")
     
-    # 創建新角色
-    with st.expander("創建新角色 (Create New Role)", expanded=False):
-        with st.form("create_role"):
-            st.write("請填寫新角色的基本資訊：")
-            role_id = st.text_input("角色ID (英文) (Role ID)", help="唯一標識符，例如：custom_helper")
-            name = st.text_input("角色名稱 (Role Name)", help="顯示名稱，例如：客服助手")
-            description = st.text_area("角色描述 (Description)", help="角色的主要功能和特點")
-            prompt = st.text_area("提示詞 (System Prompt)", help="設定角色的行為和回應方式")
-            
-            st.write("模型設定：")
-            # 獲取可用的模型列表
-            config = Config()
-            available_models = []
-            if config.GOOGLE_API_KEY:
-                available_models.extend([
-                    "gemini-2.0-flash-exp",
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b",
-                    "gemini-1.5-pro"
-                ])
-            if config.OPENAI_API_KEY:
-                available_models.extend([
-                    "gpt-4-turbo-preview",
-                    "gpt-3.5-turbo"
-                ])
-            if config.CLAUDE_API_KEY:
-                available_models.extend([
-                    "claude-3-opus-20240229",
-                    "claude-3-sonnet-20240229",
-                    "claude-3-haiku-20240307"
-                ])
-            
-            preferred_model = st.selectbox(
-                "偏好模型 (Preferred Model)",
-                ["自動選擇"] + available_models,
-                help="設定此角色優先使用的AI模型"
-            )
-            
-            st.write("插件設定：")
-            plugins = {
-                "web_search": "網路搜尋 (Web Search)",
-                "image_generation": "AI 製圖 (Image Generation)",
-                "code_interpreter": "程式碼解釋器 (Code Interpreter)",
-                "file_analysis": "檔案分析 (File Analysis)",
-                "data_visualization": "資料視覺化 (Data Visualization)"
-            }
-            
-            enabled_plugins = st.multiselect(
-                "啟用插件 (Enable Plugins)",
-                options=list(plugins.keys()),
-                format_func=lambda x: plugins[x],
-                help="選擇此角色可以使用的插件功能"
-            )
-            
-            st.write("進階設定：")
-            col1, col2 = st.columns(2)
-            with col1:
-                temperature = st.slider(
-                    "溫度 (Temperature)", 
-                    0.0, 1.0, 0.7,
-                    help="控制回應的創造性，越高越有創意"
-                )
-                max_tokens = st.number_input(
-                    "最大 Token 數 (Max Tokens)",
-                    100, 4000, 1000,
-                    help="單次回應的最大長度"
-                )
-            with col2:
-                top_p = st.slider(
-                    "Top P",
-                    0.0, 1.0, 0.9,
-                    help="控制回應的多樣性"
-                )
-            
-            submitted = st.form_submit_button("創建角色 (Create)")
-            if submitted:
-                settings = {
-                    "temperature": temperature,
-                    "top_p": top_p,
-                    "max_tokens": max_tokens,
-                    "preferred_model": preferred_model if preferred_model != "自動選擇" else None,
-                    "enabled_plugins": enabled_plugins
-                }
-                if role_manager.create_role(role_id, name, description, prompt, settings):
-                    st.success("✅ 角色已創建")
-                    st.experimental_rerun()
-                else:
-                    st.error("❌ 創建失敗")
-    
-    # 顯示和編輯現有角色
+    # 顯示現有角色列表
     st.subheader("現有角色列表 (Existing Roles)")
     roles = role_manager.list_roles()
     
@@ -154,12 +223,53 @@ def show_role_management(role_manager):
         with st.expander(f"{role.name} ({role_id})", expanded=False):
             # 基本信息顯示
             st.write("當前設定：")
-            st.json({
-                "名稱": role.name,
-                "描述": role.description,
-                "提示詞": role.prompt,
-                "設定": role.settings
-            })
+            
+            # 顯示基本信息
+            st.write("基本信息：")
+            st.write(f"- 名稱：{role.name}")
+            st.write(f"- 描述：{role.description}")
+            
+            # 顯示 Prompts 設定
+            st.write("Prompts 設定：")
+            
+            # 顯示使用的共用 Prompts
+            if role.base_prompts:
+                st.write("使用的共用 Prompts：")
+                prompts = role_manager.get_available_prompts()
+                for prompt_id in role.base_prompts:
+                    prompt_data = prompts.get(prompt_id, {})
+                    st.write(f"**{prompt_id}** - {prompt_data.get('description', '')}")
+                    st.text_area(
+                        "Prompt 內容",
+                        value=prompt_data.get('content', ''),
+                        disabled=True,
+                        height=100,
+                        key=f"prompt_{role_id}_{prompt_id}"
+                    )
+            
+            # 顯示角色專屬 Prompt
+            st.write("角色專屬 Prompt：")
+            st.text_area(
+                "Role Prompt",
+                value=role.role_prompt,
+                disabled=True,
+                height=100,
+                key=f"role_prompt_{role_id}"
+            )
+            
+            # 顯示完整的組合 Prompt
+            st.write("完整組合後的 Prompt：")
+            st.text_area(
+                "Combined Prompt",
+                value=role.prompt,
+                disabled=True,
+                height=150,
+                key=f"combined_prompt_{role_id}"
+            )
+            
+            # 顯示其他設定
+            st.write("模型設定：")
+            st.json(role.settings)
             
             # 測試對話按鈕
             if st.button("測試對話 (Test Chat)", key=f"test_{role_id}"):
@@ -520,37 +630,13 @@ def test_claude(api_key: str):
         st.error(f"❌ Claude API 測試失敗：{str(e)}")
 
 def show_line_account_management():
-    st.header("LINE 官方帳號管理 (LINE Official Account)")
+    st.header("LINE 官方帳號管理")
     
-    # 從環境變數獲取設定值
-    line_settings = {
-        'LINE_CHANNEL_SECRET': os.getenv('LINE_CHANNEL_SECRET'),
-        'LINE_CHANNEL_ACCESS_TOKEN': os.getenv('LINE_CHANNEL_ACCESS_TOKEN'),
-        'LINE_BOT_ID': os.getenv('LINE_BOT_ID'),
-        'NGROK_AUTH_TOKEN': os.getenv('NGROK_AUTH_TOKEN')
-    }
-    
-    settings_names = {
-        'LINE_CHANNEL_SECRET': '頻道密鑰',
-        'LINE_CHANNEL_ACCESS_TOKEN': '頻道存取權杖',
-        'LINE_BOT_ID': '機器人 ID',
-        'NGROK_AUTH_TOKEN': 'Ngrok 權杖'
-    }
-    
-    # 檢查缺少的設定
-    missing_settings = [
-        settings_names[key] 
-        for key, value in line_settings.items() 
-        if not value
-    ]
-    
-    if missing_settings:
-        st.error("⚠️ 尚未完成必要設定")
-        
+    # LINE API 設定
+    with st.expander("API 設定", expanded=True):
         st.markdown("""
         ### LINE 官方帳號設定步驟
-
-        1. 前往 [LINE Developers](https://developers.line.biz/zh-hant/) 並登入
+        1. 前往 [LINE Developers Console](https://developers.line.biz/console/)
         2. 建立或選擇一個 Provider
         3. 建立一個 Messaging API Channel
         4. 在 Basic Settings 中可以找到：
@@ -560,74 +646,99 @@ def show_line_account_management():
            - Bot Basic ID (機器人 ID)
         """)
         
-        st.info("請在 .env 文件中設定以下項目：")
-        for item in missing_settings:
-            st.markdown(f"- {item}")
+        # 從配置文件加載當前設定
+        config = Config()
+        current_settings = {
+            'LINE_CHANNEL_SECRET': config.LINE_CHANNEL_SECRET,
+            'LINE_CHANNEL_ACCESS_TOKEN': config.LINE_CHANNEL_ACCESS_TOKEN,
+            'LINE_BOT_ID': config.LINE_BOT_ID
+        }
         
-        st.warning("""
-        注意事項：
-        - Channel Secret 和 Access Token 請妥善保管
-        - 設定完成後需要重新啟動應用程式
-        - Webhook URL 會在機器人啟動後自動設定
-        """)
-        return
-    
-    # 所有設定都存在時顯示資訊
-    with st.expander("帳號資訊 (Account Info)", expanded=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info("基本資訊")
-            st.write(f"Channel Secret: {'*' * 10}")
-            st.write(f"Access Token: {'*' * 10}")
-            st.write(f"Bot ID: @{line_settings['LINE_BOT_ID']}")
-            st.success("✓ LINE Channel 已設定")
-        
-        with col2:
-            st.info("Webhook 設定")
-            st.success("✓ Ngrok 已設定")
-            st.write(f"Auth Token: {'*' * 10}")
-    
-    # 好友管理
-    with st.expander("好友管理 (Friend Management)", expanded=True):
-        st.subheader("加入好友")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("""
-            ### 加入方式
-            1. 使用 LINE 掃描 QR Code
-            2. 點擊好友連結
-            3. 搜尋 Bot ID
-            """)
-        
-        with col2:
-            st.markdown("""
-            ### 好友連結
-            點擊下方連結加入好友：
-            """)
-            bot_id = line_settings['LINE_BOT_ID']
-            st.markdown(f"[加為好友](https://line.me/R/ti/p/@{bot_id})")
-            st.info(f"Bot ID: @{bot_id}")
-    
-    # 進階功能
-    with st.expander("進階功能 (Advanced Features)", expanded=False):
-        st.subheader("群發訊息")
-        with st.form("broadcast_message"):
-            message = st.text_area("訊息內容")
-            target = st.radio(
-                "發送對象",
-                ["所有好友", "特定群組", "指定好友"]
+        with st.form("line_settings"):
+            channel_secret = st.text_input(
+                "Channel Secret",
+                value=current_settings['LINE_CHANNEL_SECRET'],
+                type="password"
+            )
+            channel_token = st.text_input(
+                "Channel Access Token",
+                value=current_settings['LINE_CHANNEL_ACCESS_TOKEN'],
+                type="password"
+            )
+            bot_id = st.text_input(
+                "Bot ID",
+                value=current_settings['LINE_BOT_ID']
             )
             
-            if st.form_submit_button("發送"):
-                st.info("群發功能開發中...")
+            if st.form_submit_button("保存設定"):
+                try:
+                    update_env_file({
+                        'LINE_CHANNEL_SECRET': channel_secret,
+                        'LINE_CHANNEL_ACCESS_TOKEN': channel_token,
+                        'LINE_BOT_ID': bot_id
+                    })
+                    st.success("設定已更新，請重新啟動服務以套用更改")
+                except Exception as e:
+                    st.error(f"保存設定失敗：{str(e)}")
+    
+    # Webhook 狀態顯示
+    with st.expander("Webhook 狀態", expanded=True):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("""
+            ### Webhook 設定說明
+            1. 確保 LINE Bot 服務正在運行：
+               ```bash
+               python run.py --mode bot
+               ```
+            2. 複製下方的 Webhook URL
+            3. 前往 [LINE Developers Console](https://developers.line.biz/console/)
+            4. 在 Messaging API 設定中：
+               - 貼上 Webhook URL
+               - 開啟「Use webhook」選項
+               - 點擊「Verify」按鈕測試連接
+            """)
         
-        st.subheader("自動回覆設定")
-        with st.form("auto_reply"):
-            enabled = st.checkbox("啟用自動回覆")
-            welcome_msg = st.text_area("歡迎訊息")
+        with col2:
+            st.markdown("### 服務狀態")
+            if check_line_bot_service():
+                st.success("✅ 服務運行中")
+            else:
+                st.error("❌ 服務未運行")
+        
+        # 顯示當前 Webhook URL
+        st.subheader("當前 Webhook URL")
+        webhook_url = get_webhook_url()
+        if webhook_url:
+            webhook_full_url = f"{webhook_url}/callback"
+            st.code(webhook_full_url, language=None)
             
-            if st.form_submit_button("保存"):
-                st.info("自動回覆功能開發中...")
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                if st.button("複製 URL"):
+                    st.write("URL 已複製到剪貼簿")
+                    st.markdown(f"""
+                    <script>
+                        navigator.clipboard.writeText('{webhook_full_url}');
+                    </script>
+                    """, unsafe_allow_html=True)
+            with col2:
+                st.info("👆 請複製此 URL 到 LINE Developers Console 的 Webhook URL 欄位")
+        else:
+            st.warning("⚠️ 無法獲取 Webhook URL")
+    
+    # 機器人資訊
+    if bot_id:
+        with st.expander("加入好友資訊", expanded=True):
+            st.markdown(f"""
+            ### 加入好友方式
+            1. 掃描 QR Code：
+               - 使用 LINE 掃描 [這個連結](https://line.me/R/ti/p/@{bot_id})
+            2. 搜尋 Bot ID：
+               - 在 LINE 搜尋欄位輸入：@{bot_id}
+            3. 點擊好友連結：
+               - [https://line.me/R/ti/p/@{bot_id}](https://line.me/R/ti/p/@{bot_id})
+            """)
 
 async def show_chat_test():
     st.header("對話測試 (Chat Test)")
@@ -789,6 +900,44 @@ async def show_chat_test():
         except Exception as e:
             st.error(f"處理檔案時發生錯誤：{str(e)}")
 
+def get_prompt_template(prompt_type: str) -> str:
+    """根據類型返回 prompt 模板"""
+    templates = {
+        "Language": "請使用{language}與使用者對話，保持自然流暢的表達方式。",
+        "Tone": "在對話中使用{tone}的語氣和風格，讓對話更加生動。",
+        "Format": "回答時請使用{format}的格式，確保內容清晰易讀。",
+        "Expertise": "以{field}領域專家的身份回答，運用專業知識和經驗。",
+        "Personality": "展現{traits}的性格特徵，讓對話更有個性。"
+    }
+    return templates.get(prompt_type, "")
+
+def check_line_bot_service():
+    """檢查 LINE Bot 服務狀態"""
+    max_retries = 3
+    timeout = 3  # 增加超時時間到 3 秒
+    
+    for i in range(max_retries):
+        try:
+            response = requests.get("http://127.0.0.1:5000/status", timeout=timeout)
+            if response.status_code == 200:
+                return True
+            time.sleep(1)
+        except requests.exceptions.RequestException:
+            if i < max_retries - 1:
+                time.sleep(1)
+                continue
+    return False
+
+def get_webhook_url():
+    """獲取 webhook URL"""
+    try:
+        response = requests.get("http://127.0.0.1:5000/webhook-url", timeout=3)
+        if response.status_code == 200:
+            return response.json().get('url')
+    except requests.exceptions.RequestException:
+        pass
+    return None
+
 def main():
     st.set_page_config(
         page_title="Line AI Assistant - 管理介面",
@@ -807,8 +956,9 @@ def main():
         ["系統狀態 (System Status)", 
          "AI 模型設定 (AI Model Settings)", 
          "LINE 官方帳號管理 (LINE Official Account)",
-         "對話測試 (Chat Test)",  # 添加對話測試選項
-         "對話角色管理 (Chat Role Management)",
+         "對話測試 (Chat Test)",
+         "共用 Prompts 管理 (Shared Prompts)",
+         "角色管理 (Role Management)",
          "文件管理 (Document Management)"]
     )
     
@@ -819,8 +969,10 @@ def main():
     elif "LINE 官方帳號管理" in menu:
         show_line_account_management()
     elif "對話測試" in menu:
-        asyncio.run(show_chat_test())  # Update this line
-    elif "對話角色管理" in menu:
+        asyncio.run(show_chat_test())
+    elif "共用 Prompts 管理" in menu:
+        show_prompts_management(role_manager)
+    elif "角色管理" in menu:
         show_role_management(role_manager)
     elif "文件管理" in menu:
         st.header("文件管理 (Document Management)")
