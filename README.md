@@ -8,6 +8,8 @@
 - 文件知識庫
 - 管理員介面
 - Studio 測試環境
+- 多模型支援 (Gemini、GPT、Claude)
+- 多媒體處理 (文件、圖片、音訊)
 
 ## 安裝步驟
 
@@ -56,7 +58,12 @@ cp .env.example .env
 
 2. 編輯 `.env` 文件，填入必要的設定：
 - LINE Channel 設定
+  - LINE_CHANNEL_SECRET
+  - LINE_CHANNEL_ACCESS_TOKEN
 - AI API Keys
+  - GOOGLE_API_KEY (Gemini)
+  - OPENAI_API_KEY (GPT)
+  - ANTHROPIC_API_KEY (Claude)
 - Ngrok Auth Token
 
 ### 4. 初始化系統
@@ -149,3 +156,47 @@ streamlit run studio/studio_ui.py
 - 首次使用請完整執行初始化流程
 - 定期備份對話和設定資料
 - 在虛擬環境中運行專案
+
+## 支援的檔案格式
+
+- 文件：
+  - 純文本 (.txt)
+  - PDF (.pdf)
+  - Word (.doc, .docx)
+  - Excel (.xls, .xlsx)
+- 圖片：
+  - PNG (.png)
+  - JPEG (.jpg, .jpeg)
+- 音訊：
+  - MP3 (.mp3)
+  - WAV (.wav)
+
+## AI 模型設定
+
+支援的模型：
+1. Google Gemini
+   - gemini-pro：文字處理
+   - gemini-pro-vision：圖像分析
+2. OpenAI GPT
+   - gpt-4-turbo-preview
+   - gpt-4
+   - gpt-3.5-turbo
+3. Anthropic Claude
+   - claude-3-opus-20240229
+   - claude-3-sonnet-20240229
+   - claude-3-haiku-20240229
+
+## 常見問題
+
+1. 檔案上傳失敗
+   - 檢查檔案格式是否支援
+   - 檢查檔案大小限制
+
+2. API 連接錯誤
+   - 確認 API Key 正確性
+   - 檢查網路連接
+   - 確認 API 額度
+
+3. 模型切換問題
+   - 確認已在 .env 中設置對應的 API Key
+   - 檢查模型是否在已啟用列表中

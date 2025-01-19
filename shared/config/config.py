@@ -83,3 +83,37 @@ class Config:
         if cls.CLAUDE_API_KEY:
             models.extend(cls.CLAUDE_ENABLED_MODELS)
         return models
+
+class DevelopmentConfig(Config):
+    """開發環境配置"""
+    DEBUG = True
+    LOG_LEVEL = 'DEBUG'
+
+class ProductionConfig(Config):
+    """生產環境配置"""
+    DEBUG = False
+    LOG_LEVEL = 'INFO'
+    
+    @classmethod
+    def init_app(cls, app):
+        """生產環境特定的初始化"""
+        super().init_app(app)
+        
+        # 在生產環境中使用更安全的設定
+        app.config['SESSION_COOKIE_SECURE'] = True
+        app.config['REMEMBER_COOKIE_SECURE'] = True
+
+class TestingConfig(Config):
+    """測試環境配置"""
+    TESTING = True
+    DEBUG = True
+    LOG_LEVEL = 'DEBUG'
+    DATABASE_URL = 'sqlite:///:memory:'  # 使用記憶體資料庫
+
+# 配置映射
+config = {
+    'development': DevelopmentConfig,
+    'production': ProductionConfig,
+    'testing': TestingConfig,
+    'default': DevelopmentConfig
+}

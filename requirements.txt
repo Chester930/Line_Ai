@@ -9,6 +9,16 @@ sqlalchemy==2.0.23
 # AI & ML
 google-generativeai==0.3.1
 sentence-transformers==2.2.2
+openai>=1.12.0
+anthropic>=0.18.1
+
+# File Processing
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+pandas>=2.0.0
+openpyxl>=3.1.0
+Pillow>=10.0.0
+SpeechRecognition>=3.10.0
 
 # Config
 python-dotenv==1.0.0
@@ -23,7 +33,6 @@ psutil==5.9.6
 requests==2.31.0
 python-multipart==0.0.6
 
-# AI APIs
-google-generativeai==0.3.1
-openai>=1.12.0
-anthropic>=0.18.1
+# 添加以下依賴
+pyttsx3>=2.90  # 語音合成
+soundfile>=0.10.3  # 音訊檔案處理

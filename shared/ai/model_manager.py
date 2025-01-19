@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 import google.generativeai as genai
 from shared.config.config import Config
 from shared.utils.role_manager import RoleManager
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -82,3 +83,23 @@ class ModelManager:
         except Exception as e:
             logger.error(f"計算 tokens 時發生錯誤: {str(e)}")
             return 0
+
+    def describe_image(self, image) -> str:
+        """使用 Gemini Vision API 描述圖片"""
+        try:
+            # 將 PIL Image 轉換為 bytes
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format=image.format)
+            img_byte_arr = img_byte_arr.getvalue()
+            
+            # 使用 Gemini Vision API
+            model = genai.GenerativeModel('gemini-pro-vision')
+            response = model.generate_content([
+                "請詳細描述這張圖片的內容，包括主要物件、場景、顏色等細節。",
+                img_byte_arr
+            ])
+            
+            return response.text
+        except Exception as e:
+            logger.error(f"圖片描述失敗：{str(e)}")
+            return "無法描述圖片內容"
