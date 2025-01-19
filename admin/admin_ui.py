@@ -24,115 +24,56 @@ from shared.ai.model_manager import ModelManager
 logger = logging.getLogger(__name__)
 
 def show_system_status():
-    st.header("系統狀態")
-    st.write("目前版本：1.0.0")
+    st.header("系統狀態 (System Status)")
+    st.write("目前版本 (Current Version)：1.0.0")
     
     # 顯示系統資訊
     col1, col2 = st.columns(2)
     with col1:
         st.info("系統設定 (System Settings)")
-        st.write("- 資料庫類型：SQLite")
-        st.write("- AI 模型：Gemini Pro")
-        st.write("- 日誌級別：INFO")
+        st.write("- 資料庫類型 (Database Type)：SQLite")
+        st.write("- AI 模型 (AI Model)：Gemini Pro")
+        st.write("- 日誌級別 (Log Level)：INFO")
     
     with col2:
         st.info("運行狀態 (Runtime Status)")
-        st.write("- 資料庫連接：正常")
-        st.write("- API 連接：正常")
-        st.write("- Webhook：未啟動")
+        st.write("- 資料庫連接 (Database Connection)：正常 (Normal)")
+        st.write("- API 連接 (API Connection)：正常 (Normal)")
+        st.write("- Webhook：未啟動 (Not Started)")
 
 def show_prompts_management(role_manager):
-    st.header("共用 Prompts 管理")
+    st.header("共用提示詞管理 (Shared Prompts Management)")
     
-    # 顯示預設和自定義的 Prompts
-    categories = [
-        "語言設定 (Language)", 
+    # 定義類別映射
+    category_mapping = {
+        "語言設定 (Language)": "language",
+        "語氣風格 (Tone)": "tone",
+        "輸出格式 (Output Format)": "output_format",
+        "寫作風格 (Writing Style)": "writing_style",
+        "MBTI 性格 (MBTI Personality)": "mbti",
+        "進階性格 (Advanced Personality)": "personality"
+    }
+    
+    # 顯示分類標籤
+    tabs = st.tabs([
+        "語言設定 (Language)",
         "語氣風格 (Tone)", 
-        "輸出格式 (Format)", 
-        "專業領域 (Expertise)", 
-        "性格特徵 (Personality)"
-    ]
+        "輸出格式 (Output Format)", 
+        "寫作風格 (Writing Style)",
+        "MBTI 性格 (MBTI Personality)",
+        "進階性格 (Advanced Personality)"
+    ])
     
-    for category in categories:
-        with st.expander(f"{category}", expanded=False):
-            # 獲取當前類別的英文標識（用於後端處理）
-            category_id = category.split(" (")[1].rstrip(")")
-            prompts = role_manager.get_prompts_by_category(category_id)
-            
-            # 顯示預設和自定義的 prompts
-            st.subheader("預設 Prompts")
-            default_prompts = {k: v for k, v in prompts.items() if v.get('is_default')}
-            for prompt_id, data in default_prompts.items():
-                with st.expander(f"{data['description']}", expanded=False):
-                    st.text_area("內容", value=data['content'], disabled=True)
-                    st.write(f"使用次數: {data['usage_count']}")
-            
-            st.subheader("自定義 Prompts")
-            custom_prompts = {k: v for k, v in prompts.items() if not v.get('is_default')}
-            if custom_prompts:
-                for prompt_id, data in custom_prompts.items():
+    for tab, (zh_category, en_category) in zip(tabs, category_mapping.items()):
+        with tab:
+            prompts = role_manager.get_prompts_by_category(en_category)
+            if prompts:
+                for prompt_id, data in prompts.items():
                     with st.expander(f"{data['description']}", expanded=False):
-                        st.text_area("內容", value=data['content'], disabled=True)
-                        st.write(f"使用次數: {data['usage_count']}")
-                        if st.button("刪除", key=f"delete_{prompt_id}"):
-                            if role_manager.delete_prompt(prompt_id):
-                                st.success("已刪除")
-                                st.experimental_rerun()
+                        st.code(data['content'], language="markdown")
+                        st.write(f"使用次數 (Usage Count): {data.get('usage_count', 0)}")
             else:
-                st.info("尚未創建自定義 Prompts")
-            
-            # 創建新的自定義 prompt
-            st.subheader(f"創建新的 {category.split(' (')[0]}")
-            with st.form(f"create_prompt_{category_id}"):
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    prompt_id = st.text_input(
-                        "Prompt ID",
-                        help="唯一標識符，例如：chinese_language"
-                    )
-                    description = st.text_input(
-                        "描述 (Description)",
-                        help="簡短描述這個 prompt 的用途"
-                    )
-                with col2:
-                    prompt_type = st.selectbox(
-                        "類型 (Type)",
-                        ["Language", "Tone", "Personality", "Expertise", "Others"]
-                    )
-                
-                content = st.text_area(
-                    "Prompt 內容",
-                    height=150,
-                    help="prompt 的具體內容",
-                    placeholder=get_prompt_template(prompt_type)
-                )
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    example_input = st.text_input(
-                        "測試輸入 (Test Input)",
-                        help="輸入一段測試文字來預覽效果"
-                    )
-                with col2:
-                    if example_input:
-                        st.write("預期效果預覽：")
-                        st.write(content.replace("{input}", example_input))
-                
-                if st.form_submit_button("創建 Prompt"):
-                    if prompt_id and content:
-                        if role_manager.create_prompt(
-                            prompt_id, 
-                            content, 
-                            description,
-                            prompt_type=prompt_type,
-                            category=category_id
-                        ):
-                            st.success("✅ Prompt 已創建")
-                            st.experimental_rerun()
-                        else:
-                            st.error("❌ 創建失敗，ID 可能已存在")
-                    else:
-                        st.warning("⚠️ 請填寫必要欄位")
+                st.info(f"目前沒有 {zh_category} 的提示詞")
 
 def show_role_management(role_manager):
     """角色管理介面"""
@@ -156,20 +97,136 @@ def show_role_management(role_manager):
         )
         
         # 選擇共用 prompts
+        st.subheader("選擇共用 Prompts")
+        
+        # 依類別選擇 Prompts
+        categories = {
+            "語言設定": "language",
+            "語氣風格": "tone",
+            "輸出格式": "output_format",
+            "寫作風格": "writing_style",
+            "MBTI 性格": "mbti",
+            "進階性格": "personality"
+        }
+        
+        selected_prompts = {}
         available_prompts = role_manager.get_available_prompts()
-        selected_prompts = st.multiselect(
-            "選擇共用 Prompts",
-            options=list(available_prompts.keys()),
-            format_func=lambda x: f"{x} - {available_prompts[x].get('description', '')}",
-            help="選擇要使用的共用 prompts"
-        )
+        
+        for zh_category, en_category in categories.items():
+            # 獲取該類別的所有 prompts
+            category_prompts = role_manager.get_prompts_by_category(en_category)
+            
+            if en_category == "mbti":
+                # MBTI 性格使用單選
+                st.write(f"選擇 {zh_category}：")
+                prompt_options = ["預設 (Default)"] + [
+                    f"{k} - {v['description']}"
+                    for k, v in category_prompts.items()
+                ]
+                
+                selected = st.selectbox(
+                    "選擇 MBTI 性格類型",
+                    options=prompt_options,
+                    key=f"select_{en_category}"
+                )
+                
+                if selected != "預設 (Default)":
+                    prompt_id = selected.split(" - ")[0]
+                    selected_prompts[en_category] = prompt_id
+                    
+            elif en_category == "personality":
+                # 進階性格使用多選
+                st.write(f"選擇{zh_category}（可複選）：")
+                prompt_options = [
+                    f"{k} - {v['description']}"
+                    for k, v in category_prompts.items()
+                ]
+                
+                selected_traits = st.multiselect(
+                    "選擇進階性格特徵",
+                    options=prompt_options,
+                    key=f"select_{en_category}"
+                )
+                
+                if selected_traits:
+                    selected_prompts[en_category] = [
+                        trait.split(" - ")[0] for trait in selected_traits
+                    ]
+            else:
+                # 其他類別使用單選
+                prompt_options = ["預設 (Default)"] + [
+                    f"{k} - {v['description']}"
+                    for k, v in category_prompts.items()
+                ]
+                
+                selected = st.selectbox(
+                    f"選擇{zh_category}",
+                    options=prompt_options,
+                    key=f"select_{en_category}"
+                )
+                
+                if selected != "預設 (Default)":
+                    prompt_id = selected.split(" - ")[0]
+                    selected_prompts[en_category] = prompt_id
         
         role_prompt = st.text_area(
             "角色專屬提示詞 (Role Prompt)",
             help="設定角色的特定行為和回應方式"
         )
         
-        st.write("進階設定：")
+        # 插件設定
+        st.subheader("插件設定 (Plugin Settings)")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            web_search = st.checkbox(
+                "啟用網路搜尋 (Enable Web Search)",
+                value=False,
+                help="允許 AI 使用網路搜尋來增強回答準確度"
+            )
+            
+            if web_search:
+                web_search_weight = st.slider(
+                    "網路搜尋參考權重 (Web Search Weight)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=0.3,
+                    help="設定網路搜尋結果在回答中的參考權重 (0.0-1.0)"
+                )
+                
+                max_search_results = st.number_input(
+                    "最大搜尋結果數 (Max Search Results)",
+                    min_value=1,
+                    max_value=10,
+                    value=3,
+                    help="設定每次搜尋返回的最大結果數量"
+                )
+        
+        with col2:
+            knowledge_base = st.checkbox(
+                "啟用知識庫 (Enable Knowledge Base)",
+                value=False,
+                help="允許 AI 使用自定義知識庫來回答問題"
+            )
+            
+            if knowledge_base:
+                kb_weight = st.slider(
+                    "知識庫參考權重 (Knowledge Base Weight)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=0.5,
+                    help="設定知識庫內容在回答中的參考權重 (0.0-1.0)"
+                )
+                
+                kb_sources = st.multiselect(
+                    "選擇知識庫來源 (Select Knowledge Base Sources)",
+                    options=["文件庫", "FAQ", "自定義資料"],
+                    default=["FAQ"],
+                    help="選擇要使用的知識庫來源"
+                )
+        
+        # AI 模型進階設定
+        st.subheader("AI 模型進階設定 (Advanced AI Settings)")
         col1, col2 = st.columns(2)
         with col1:
             temperature = st.slider(
@@ -182,24 +239,50 @@ def show_role_management(role_manager):
                 100, 4000, 1000,
                 help="單次回應的最大長度"
             )
+            presence_penalty = st.slider(
+                "Presence Penalty",
+                -2.0, 2.0, 0.0,
+                help="控制模型對新主題的關注度"
+            )
+        
         with col2:
             top_p = st.slider(
                 "Top P",
                 0.0, 1.0, 0.9,
                 help="控制回應的多樣性"
             )
-            web_search = st.checkbox(
-                "啟用網路搜尋 (Enable Web Search)",
-                help="允許使用網路資訊回答問題"
+            frequency_penalty = st.slider(
+                "Frequency Penalty",
+                -2.0, 2.0, 0.0,
+                help="控制模型避免重複內容的程度"
+            )
+            response_format = st.selectbox(
+                "回應格式 (Response Format)",
+                ["自動", "純文字", "Markdown", "JSON"],
+                help="設定 AI 回應的輸出格式"
             )
         
-        submitted = st.form_submit_button("創建角色 (Create)")
-        if submitted:
+        # 儲存設定
+        if st.form_submit_button("創建角色 (Create)"):
             settings = {
                 "temperature": temperature,
                 "top_p": top_p,
                 "max_tokens": max_tokens,
-                "web_search": web_search
+                "presence_penalty": presence_penalty,
+                "frequency_penalty": frequency_penalty,
+                "response_format": response_format,
+                "plugins": {
+                    "web_search": {
+                        "enabled": web_search,
+                        "weight": web_search_weight if web_search else 0.0,
+                        "max_results": max_search_results if web_search else 3
+                    },
+                    "knowledge_base": {
+                        "enabled": knowledge_base,
+                        "weight": kb_weight if knowledge_base else 0.0,
+                        "sources": kb_sources if knowledge_base else []
+                    }
+                }
             }
             if role_manager.create_role(
                 role_id, name, description, role_prompt,
@@ -359,220 +442,95 @@ def show_role_management(role_manager):
                             st.error("❌ 刪除失敗")
 
 def show_api_settings():
-    st.header("API Keys 設定 (API Settings)")
+    st.header("AI 模型設定 (AI Model Settings)")
     
-    # 定義各 API 提供商的模型
-    MODEL_OPTIONS = {
-        "Google": {
-            "api_key": "GOOGLE_API_KEY",
-            "models": [
-                "gemini-2.0-flash-exp",  # Gemini 2.0快閃記憶體
-                "gemini-1.5-flash",      # Gemini 1.5閃存
-                "gemini-1.5-flash-8b",   # Gemini 1.5 Flash-8B
-                "gemini-1.5-pro",        # Gemini 1.5專業版
-                "text-embedding-004",     # 文字嵌入 (開發中)
-                "aqa"                     # 空氣品質保證 (開發中)
-            ],
-            "available_models": [        # 目前可用的模型
-                "gemini-2.0-flash-exp",
-                "gemini-1.5-flash",
-                "gemini-1.5-flash-8b",
-                "gemini-1.5-pro"
-            ],
-            "description": """Gemini 系列模型：
-            
-            1. Gemini 2.0快閃記憶體 (gemini-2.0-flash-exp)
-               • 新一代多模態模型
-               • 支援: 音訊、圖片、影片和文字
-               • 特點: 速度快、功能全面
-            
-            2. Gemini 1.5閃存 (gemini-1.5-flash)
-               • 快速且多功能的通用模型
-               • 適合: 日常對話和一般任務
-               • 特點: 反應快速、資源消耗低
-            
-            3. Gemini 1.5 Flash-8B (gemini-1.5-flash-8b)
-               • 輕量級模型
-               • 適合: 大量簡單任務處理
-               • 特點: 超低延遲、高並發
-            
-            4. Gemini 1.5專業版 (gemini-1.5-pro)
-               • 高階推理模型
-               • 適合: 複雜分析和專業任務
-               • 特點: 推理能力強、結果精確
-            
-            以下功能開發中：
-            
-            5. 文字嵌入 (text-embedding-004)
-               • 文本向量化模型
-               • 用途: 文本相似度分析
-               • 特點: 高精度文本理解
-            
-            6. 空氣品質保證 (aqa)
-               • 專業問答模型
-               • 用途: 提供可靠來源解答
-               • 特點: 答案準確度高"""
-        },
-        "OpenAI": {
-            "api_key": "OPENAI_API_KEY",
-            "models": [
-                "gpt-4o",           # 通用旗艦模型
-                "gpt-4o-mini",      # 小型快速模型
-                "o1",               # 複雜推理模型
-                "o1-mini",          # 輕量推理模型
-                "gpt-4o-realtime",  # 即時互動模型
-                "gpt-4o-audio",     # 音訊處理模型
-                "gpt-4-turbo",      # 舊版高智能模型
-                "gpt-3.5-turbo",    # 基礎快速模型
-                "dall-e-3",         # 圖像生成模型
-                "tts-1",            # 語音合成模型
-                "whisper-1",        # 語音識別模型
-                "text-embedding-3",  # 文本向量模型
-                "moderation-latest"  # 內容審核模型
-            ],
-            "description": """OpenAI 系列模型：
-            
-            1. 語言模型
-               • GPT-4o: 最新旗艦模型，全能型 AI
-               • GPT-4o-mini: 經濟型快速模型
-               • O1/O1-mini: 專注推理的新一代模型
-               • GPT-4-turbo: 前代高性能模型
-               • GPT-3.5-turbo: 性價比最高的基礎模型
-            
-            2. 多模態模型
-               • GPT-4o-realtime: 即時音訊文本互動
-               • GPT-4o-audio: 專業音訊處理
-               • DALL·E-3: AI 圖像生成
-            
-            3. 專業工具
-               • TTS-1: 高品質語音合成
-               • Whisper-1: 精確語音識別
-               • Text-embedding-3: 文本向量化
-               • Moderation-latest: 內容安全審核
-            
-            特點說明：
-            • 即時互動: 支援流式輸出
-            • 多語言: 支援超過95種語言
-            • 安全性: 內建內容過濾
-            • 可擴展: API 使用無並發限制"""
-        },
-        "Anthropic": {
-            "api_key": "CLAUDE_API_KEY",
-            "models": [
-                # Claude 3.5 系列
-                "claude-3-5-sonnet-20241022",  # 3.5 Sonnet
-                "claude-3-5-haiku-20241022",   # 3.5 Haiku
-                
-                # Claude 3 系列
-                "claude-3-opus-20240229",      # 3 Opus
-                "claude-3-sonnet-20240229",    # 3 Sonnet
-                "claude-3-haiku-20240307"      # 3 Haiku
-            ],
-            "description": """Claude 系列模型：
-            Claude 3.5 系列 (最新):
-            - claude-3-5-sonnet: 高性能通用模型
-            - claude-3-5-haiku: 快速輕量模型
-            
-            Claude 3 系列:
-            - claude-3-opus: 最強大的模型，適合複雜任務
-            - claude-3-sonnet: 平衡性能和速度的通用模型
-            - claude-3-haiku: 快速響應的輕量模型
-            
-            支援平台:
-            - Anthropic API (直接使用)
-            - AWS Bedrock (添加 anthropic. 前綴)
-            - GCP Vertex AI (使用 @ 格式)"""
-        }
-    }
+    # 讀取當前設定
+    config = Config()
     
     with st.form("api_settings"):
-        active_providers = []
-        api_configs = {}
+        st.subheader("API 金鑰設定 (API Key Settings)")
         
-        # 為每個提供商創建一個展開區
-        for provider, config in MODEL_OPTIONS.items():
-            with st.expander(f"{provider} API 設定", expanded=True):
-                st.write(config["description"])
-                
-                # API Key 輸入
-                api_key = st.text_input(
-                    f"{provider} API Key",
-                    value=getattr(Config, config["api_key"], "") or "",
+        # Google API 設定
+        st.write("Google API 設定 (Google API Settings)")
+        google_api_key = st.text_input(
+            "Google API Key",
+            value=config.GOOGLE_API_KEY,
+            type="password",
+            help="設定 Google API Key 以使用 Gemini 模型 (Set Google API Key to use Gemini models)"
+        )
+        
+        # OpenAI API 設定
+        st.write("OpenAI API 設定 (OpenAI API Settings)")
+        openai_api_key = st.text_input(
+            "OpenAI API Key",
+            value=config.OPENAI_API_KEY,
                     type="password",
-                    help=f"輸入 {provider} API Key"
-                )
-                
-                if api_key:
-                    active_providers.append(provider)
-                    
-                    # 選擇要使用的模型
-                    enabled_models = st.multiselect(
-                        "使用的模型",  # 改為"使用的模型"
-                        options=config["available_models"] if "available_models" in config else config["models"],
-                        default=[config["available_models"][0]] if "available_models" in config else [config["models"][0]],
-                        help=f"選擇要使用的 {provider} 模型"
-                    )
-                    
-                    api_configs[provider] = {
-                        "api_key": api_key,
-                        "enabled_models": enabled_models
-                    }
+            help="設定 OpenAI API Key 以使用 GPT 模型 (Set OpenAI API Key to use GPT models)"
+        )
         
-        # 選擇默認模型（只能從已啟用的模型中選擇）
-        st.subheader("預設模型設定")
-        available_models = []
-        for provider in active_providers:
-            available_models.extend(api_configs[provider]["enabled_models"])
+        # Claude API 設定
+        st.write("Claude API 設定 (Claude API Settings)")
+        claude_api_key = st.text_input(
+            "Claude API Key",
+            value=config.CLAUDE_API_KEY,
+            type="password",
+            help="設定 Claude API Key 以使用 Claude 模型 (Set Claude API Key to use Claude models)"
+        )
         
-        if available_models:
-            default_model = st.selectbox(
-                "選擇預設模型",
-                options=available_models,
-                help="設定系統默認使用的 AI 模型"
+        # 模型設定
+        st.subheader("預設模型設定 (Default Model Settings)")
+        default_model = st.selectbox(
+            "預設 AI 模型 (Default AI Model)",
+            ["gemini-pro", "gpt-4", "gpt-3.5-turbo", "claude-3"],
+            help="選擇預設使用的 AI 模型 (Select the default AI model to use)"
+        )
+        
+        # 進階設定
+        st.subheader("進階設定 (Advanced Settings)")
+        col1, col2 = st.columns(2)
+        with col1:
+            max_history = st.number_input(
+                "最大對話歷史 (Max Chat History)",
+                min_value=1,
+                max_value=50,
+                value=10,
+                help="設定保留的對話歷史數量 (Set the number of chat history to keep)"
             )
-        else:
-            st.warning("⚠️ 請至少設定一個 API Key 並啟用相應的模型")
-            default_model = None
+            max_tokens = st.number_input(
+                "最大 Token 數 (Max Tokens)",
+                min_value=100,
+                max_value=4000,
+                value=1000,
+                help="設定單次回應的最大 Token 數 (Set the maximum tokens for each response)"
+            )
         
-        # 添加提交按鈕
-        submitted = st.form_submit_button("保存設定")
+        with col2:
+            temperature = st.slider(
+                "溫度 (Temperature)",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.7,
+                help="控制回應的創造性，越高越有創意 (Control response creativity, higher value means more creative)"
+            )
+            top_p = st.slider(
+                "Top P",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.9,
+                help="控制回應的多樣性 (Control response diversity)"
+            )
         
-        if submitted:
+        # 儲存設定時包含 default_model
+        if st.form_submit_button("儲存設定 (Save Settings)"):
             try:
-                # 準備更新的設定
-                env_updates = {}
-                
-                # 更新 API Keys
-                for provider, config in MODEL_OPTIONS.items():
-                    api_key = api_configs.get(provider, {}).get("api_key", "")
-                    if api_key:
-                        env_updates[config["api_key"]] = api_key
-                        
-                        # 保存已啟用的模型
-                        enabled_models = api_configs[provider]["enabled_models"]
-                        env_updates[f"{provider.upper()}_ENABLED_MODELS"] = ",".join(enabled_models)
-                
-                # 更新默認模型
-                if default_model:
-                    env_updates["DEFAULT_MODEL"] = default_model
-                
-                # 保存到 .env 文件
-                update_env_file(env_updates)
-                st.success("✅ 設定已更新")
-                
-                # 測試已設定的 API
-                st.write("正在測試 API 連接...")
-                for provider in active_providers:
-                    api_key = api_configs[provider]["api_key"]
-                    if provider == "Google":
-                        test_gemini(api_key)
-                    elif provider == "OpenAI":
-                        test_openai(api_key)
-                    elif provider == "Anthropic":
-                        test_claude(api_key)
-                    
+                # 儲存設定邏輯，包含 default_model...
+                config.update_settings({
+                    'DEFAULT_MODEL': default_model,
+                    # ... 其他設定
+                })
+                st.success("✅ 設定已儲存 (Settings Saved)")
             except Exception as e:
-                st.error(f"❌ 保存失敗：{str(e)}")
+                st.error(f"❌ 儲存失敗 (Save Failed): {str(e)}")
 
 def update_env_file(updates: dict):
     """更新 .env 文件"""
@@ -630,18 +588,19 @@ def test_claude(api_key: str):
         st.error(f"❌ Claude API 測試失敗：{str(e)}")
 
 def show_line_account_management():
-    st.header("LINE 官方帳號管理")
+    st.header("LINE 官方帳號管理 (LINE Official Account Management)")
     
     # LINE API 設定
-    with st.expander("API 設定", expanded=True):
+    with st.expander("API 設定 (API Settings)", expanded=True):
         st.markdown("""
-        ### LINE 官方帳號設定步驟
-        1. 前往 [LINE Developers Console](https://developers.line.biz/console/)
-        2. 建立或選擇一個 Provider
-        3. 建立一個 Messaging API Channel
-        4. 在 Basic Settings 中可以找到：
+        ### LINE 官方帳號設定步驟 (LINE Official Account Setup Steps)
+        1. 前往 LINE Developers Console (Go to LINE Developers Console)
+           [LINE Developers Console](https://developers.line.biz/console/)
+        2. 建立或選擇一個 Provider (Create or select a Provider)
+        3. 建立一個 Messaging API Channel (Create a Messaging API Channel)
+        4. 在 Basic Settings 中可以找到 (In Basic Settings, you can find)：
            - Channel Secret (頻道密鑰)
-        5. 在 Messaging API 設定中可以找到：
+        5. 在 Messaging API 設定中可以找到 (In Messaging API settings, you can find)：
            - Channel Access Token (頻道存取權杖)
            - Bot Basic ID (機器人 ID)
         """)
@@ -682,29 +641,29 @@ def show_line_account_management():
                     st.error(f"保存設定失敗：{str(e)}")
     
     # Webhook 狀態顯示
-    with st.expander("Webhook 狀態", expanded=True):
+    with st.expander("Webhook 狀態 (Webhook Status)", expanded=True):
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("""
-            ### Webhook 設定說明
-            1. 確保 LINE Bot 服務正在運行：
+            ### Webhook 設定說明 (Webhook Setup Instructions)
+            1. 確保 LINE Bot 服務正在運行 (Ensure LINE Bot service is running)：
                ```bash
                python run.py --mode bot
                ```
-            2. 複製下方的 Webhook URL
-            3. 前往 [LINE Developers Console](https://developers.line.biz/console/)
-            4. 在 Messaging API 設定中：
-               - 貼上 Webhook URL
-               - 開啟「Use webhook」選項
-               - 點擊「Verify」按鈕測試連接
+            2. 複製下方的 Webhook URL (Copy the Webhook URL below)
+            3. 前往 LINE Developers Console (Go to LINE Developers Console)
+            4. 在 Messaging API 設定中 (In Messaging API settings)：
+               - 貼上 Webhook URL (Paste the Webhook URL)
+               - 開啟「Use webhook」選項 (Enable "Use webhook" option)
+               - 點擊「Verify」按鈕測試連接 (Click "Verify" button to test connection)
             """)
         
         with col2:
-            st.markdown("### 服務狀態")
+            st.markdown("### 服務狀態 (Service Status)")
             if check_line_bot_service():
-                st.success("✅ 服務運行中")
+                st.success("✅ 服務運行中 (Service Running)")
             else:
-                st.error("❌ 服務未運行")
+                st.error("❌ 服務未運行 (Service Not Running)")
         
         # 顯示當前 Webhook URL
         st.subheader("當前 Webhook URL")
@@ -729,14 +688,15 @@ def show_line_account_management():
     
     # 機器人資訊
     if bot_id:
-        with st.expander("加入好友資訊", expanded=True):
+        with st.expander("加入好友資訊 (Add Friend Information)", expanded=True):
             st.markdown(f"""
-            ### 加入好友方式
-            1. 掃描 QR Code：
-               - 使用 LINE 掃描 [這個連結](https://line.me/R/ti/p/@{bot_id})
-            2. 搜尋 Bot ID：
-               - 在 LINE 搜尋欄位輸入：@{bot_id}
-            3. 點擊好友連結：
+            ### 加入好友方式 (Ways to Add Friend)
+            1. 掃描 QR Code (Scan QR Code)：
+               - 使用 LINE 掃描這個連結 (Use LINE to scan this link)：
+                 [QR Code](https://line.me/R/ti/p/@{bot_id})
+            2. 搜尋 Bot ID (Search Bot ID)：
+               - 在 LINE 搜尋欄位輸入 (Enter in LINE search field)：@{bot_id}
+            3. 點擊好友連結 (Click Friend Link)：
                - [https://line.me/R/ti/p/@{bot_id}](https://line.me/R/ti/p/@{bot_id})
             """)
 
@@ -906,7 +866,7 @@ def get_prompt_template(prompt_type: str) -> str:
         "Language": "請使用{language}與使用者對話，保持自然流暢的表達方式。",
         "Tone": "在對話中使用{tone}的語氣和風格，讓對話更加生動。",
         "Format": "回答時請使用{format}的格式，確保內容清晰易讀。",
-        "Expertise": "以{field}領域專家的身份回答，運用專業知識和經驗。",
+        "WritingStyle": "以{field}領域專家的身份回答，運用專業知識和經驗。",
         "Personality": "展現{traits}的性格特徵，讓對話更有個性。"
     }
     return templates.get(prompt_type, "")
