@@ -6,8 +6,11 @@ from shared.config.config import Config
 # 創建基礎模型類
 Base = declarative_base()
 
+# 創建 Config 實例
+config = Config()
+
 # 創建資料庫引擎
-engine = create_engine(Config.DATABASE_URL)
+engine = create_engine(config.DATABASE_URL)
 
 # 創建會話工廠
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

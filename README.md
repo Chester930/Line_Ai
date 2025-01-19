@@ -77,6 +77,9 @@ python scripts/setup.py
 
 系統提供三種運行模式，可根據需求選擇：
 
+# 啟動虛擬環境
+venv\Scripts\activate
+
 ### 1. 管理員介面（推薦）
 ```bash
 python run.py --mode admin

@@ -21,28 +21,42 @@ class Role:
         })
 
 class RoleManager:
+    """角色管理器"""
+    
     def __init__(self):
-        self.config_dir = os.path.join(Config.DATA_DIR, "config")
+        # 創建 Config 實例
+        self.config = Config()
+        
+        # 使用實例屬性而不是類屬性
+        self.config_dir = os.path.join(self.config.DATA_DIR, "config")
+        self.roles_file = os.path.join(self.config_dir, "roles.json")
+        
+        # 確保目錄存在
         os.makedirs(self.config_dir, exist_ok=True)
         
-        self.roles_file = os.path.join(self.config_dir, "roles.json")
-        self.roles: Dict[str, Role] = {}
-        self._load_roles()
+        # 加載角色配置
+        self._roles_data = self._load_roles()
+        # 將 JSON 數據轉換為 Role 對象
+        self.roles = {
+            role_id: Role(role_id, data) 
+            for role_id, data in self._roles_data.items()
+        }
     
-    def _load_roles(self):
-        """載入角色配置"""
-        try:
-            if os.path.exists(self.roles_file):
+    def _load_roles(self) -> Dict:
+        """從文件加載角色配置"""
+        if os.path.exists(self.roles_file):
+            try:
                 with open(self.roles_file, 'r', encoding='utf-8') as f:
-                    roles_data = json.load(f)
-                    for role_id, data in roles_data.items():
-                        self.roles[role_id] = Role(role_id, data)
-        except Exception as e:
-            logger.error(f"載入角色配置失敗: {str(e)}")
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"加載角色配置失敗: {str(e)}")
+                return {}
+        return {}
     
     def _save_roles(self) -> bool:
-        """保存角色配置"""
+        """保存角色配置到文件"""
         try:
+            # 將 Role 對象轉換回字典格式
             roles_data = {
                 role_id: {
                     'name': role.name,
@@ -74,6 +88,7 @@ class RoleManager:
                 'settings': settings or {}
             }
             
+            # 創建 Role 對象
             self.roles[role_id] = Role(role_id, role_data)
             return self._save_roles()
         except Exception as e:

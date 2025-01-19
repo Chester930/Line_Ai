@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.utils.role_manager import RoleManager
 from shared.utils.ngrok_manager import NgrokManager
 from shared.ai.conversation_manager import ConversationManager
-from shared.database.database import SessionLocal
+from shared.database.database import SessionLocal, get_db
 from shared.database.models import User
 from shared.config.config import Config
 from shared.ai.chat_tester import ChatTester
@@ -62,6 +62,51 @@ def show_role_management(role_manager):
             description = st.text_area("角色描述 (Description)", help="角色的主要功能和特點")
             prompt = st.text_area("提示詞 (System Prompt)", help="設定角色的行為和回應方式")
             
+            st.write("模型設定：")
+            # 獲取可用的模型列表
+            config = Config()
+            available_models = []
+            if config.GOOGLE_API_KEY:
+                available_models.extend([
+                    "gemini-2.0-flash-exp",
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-8b",
+                    "gemini-1.5-pro"
+                ])
+            if config.OPENAI_API_KEY:
+                available_models.extend([
+                    "gpt-4-turbo-preview",
+                    "gpt-3.5-turbo"
+                ])
+            if config.CLAUDE_API_KEY:
+                available_models.extend([
+                    "claude-3-opus-20240229",
+                    "claude-3-sonnet-20240229",
+                    "claude-3-haiku-20240307"
+                ])
+            
+            preferred_model = st.selectbox(
+                "偏好模型 (Preferred Model)",
+                ["自動選擇"] + available_models,
+                help="設定此角色優先使用的AI模型"
+            )
+            
+            st.write("插件設定：")
+            plugins = {
+                "web_search": "網路搜尋 (Web Search)",
+                "image_generation": "AI 製圖 (Image Generation)",
+                "code_interpreter": "程式碼解釋器 (Code Interpreter)",
+                "file_analysis": "檔案分析 (File Analysis)",
+                "data_visualization": "資料視覺化 (Data Visualization)"
+            }
+            
+            enabled_plugins = st.multiselect(
+                "啟用插件 (Enable Plugins)",
+                options=list(plugins.keys()),
+                format_func=lambda x: plugins[x],
+                help="選擇此角色可以使用的插件功能"
+            )
+            
             st.write("進階設定：")
             col1, col2 = st.columns(2)
             with col1:
@@ -81,10 +126,6 @@ def show_role_management(role_manager):
                     0.0, 1.0, 0.9,
                     help="控制回應的多樣性"
                 )
-                web_search = st.checkbox(
-                    "啟用網路搜尋 (Enable Web Search)",
-                    help="允許使用網路資訊回答問題"
-                )
             
             submitted = st.form_submit_button("創建角色 (Create)")
             if submitted:
@@ -92,7 +133,8 @@ def show_role_management(role_manager):
                     "temperature": temperature,
                     "top_p": top_p,
                     "max_tokens": max_tokens,
-                    "web_search": web_search
+                    "preferred_model": preferred_model if preferred_model != "自動選擇" else None,
+                    "enabled_plugins": enabled_plugins
                 }
                 if role_manager.create_role(role_id, name, description, prompt, settings):
                     st.success("✅ 角色已創建")
@@ -123,7 +165,7 @@ def show_role_management(role_manager):
             if st.button("測試對話 (Test Chat)", key=f"test_{role_id}"):
                 with st.spinner("正在準備測試..."):
                     try:
-                        db = SessionLocal()
+                        db = next(get_db())
                         conversation_manager = ConversationManager(db)
                         test_message = "你好，請簡單介紹一下你自己。"
                         
@@ -587,14 +629,133 @@ def show_line_account_management():
             if st.form_submit_button("保存"):
                 st.info("自動回覆功能開發中...")
 
-def show_chat_test():
+async def show_chat_test():
     st.header("對話測試 (Chat Test)")
     
     # 初始化聊天歷史
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     
+    # 設定區域
+    with st.expander("對話設定 (Chat Settings)", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 獲取已設定的模型列表
+            config = Config()
+            available_models = []
+            
+            if config.GOOGLE_API_KEY:
+                available_models.extend([
+                    "gemini-2.0-flash-exp",
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-8b",
+                    "gemini-1.5-pro"
+                ])
+            if config.OPENAI_API_KEY:
+                available_models.extend([
+                    "gpt-4-turbo-preview",
+                    "gpt-3.5-turbo"
+                ])
+            if config.CLAUDE_API_KEY:
+                available_models.extend([
+                    "claude-3-opus-20240229",
+                    "claude-3-sonnet-20240229",
+                    "claude-3-haiku-20240307"
+                ])
+            
+            if not available_models:
+                st.warning("請先在 API 設定中設定至少一個 API Key")
+                available_models = ["無可用模型"]
+            
+            # 選擇模型
+            model = st.selectbox(
+                "選擇模型 (Select Model)",
+                available_models,
+                index=0
+            )
+            
+            # 選擇角色
+            role_manager = RoleManager()
+            roles = role_manager.list_roles()
+            selected_role = st.selectbox(
+                "選擇角色 (Select Role)",
+                ["無角色 (No Role)"] + list(roles.keys()),
+                format_func=lambda x: roles[x].name if x in roles else x
+            )
+        
+        with col2:
+            # 臨時參數調整
+            st.write("臨時參數調整 (Temporary Settings)")
+            temperature = st.slider(
+                "溫度 (Temperature)", 
+                0.0, 1.0, 
+                value=roles[selected_role].settings['temperature'] if selected_role in roles else 0.7
+            )
+            top_p = st.slider(
+                "Top P",
+                0.0, 1.0,
+                value=roles[selected_role].settings['top_p'] if selected_role in roles else 0.9
+            )
+    
+    # 顯示對話歷史
+    for message in st.session_state.chat_history:
+        role_icon = "🧑" if message["role"] == "user" else "🤖"
+        st.write(f"{role_icon} {message['content']}")
+    
+    # 文字輸入區
+    with st.form(key="chat_form"):
+        user_input = st.text_area("輸入訊息 (Enter Message)", height=100)
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            submit_button = st.form_submit_button("發送")
+        with col2:
+            clear_button = st.form_submit_button("清除歷史")
+    
+    # 處理發送按鈕
+    if submit_button and user_input:
+        try:
+            # 添加用戶訊息到歷史
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            
+            # 獲取 AI 回應
+            with st.spinner("AI思考中..."):
+                # 建立 ConversationManager
+                conversation_manager = ConversationManager()
+                
+                # 準備對話參數
+                chat_params = {
+                    "temperature": temperature,
+                    "top_p": top_p
+                }
+                
+                # 如果選擇了角色，使用角色的提示詞
+                if selected_role in roles:
+                    chat_params["system_prompt"] = roles[selected_role].prompt
+                
+                response = await conversation_manager.get_response(
+                    "admin_test",
+                    user_input,
+                    model=model,
+                    **chat_params
+                )
+            
+            # 添加 AI 回應到歷史
+            st.session_state.chat_history.append({"role": "assistant", "content": response})
+            
+            # 重新載入頁面以顯示新訊息
+            st.experimental_rerun()
+            
+        except Exception as e:
+            st.error(f"發生錯誤：{str(e)}")
+    
+    # 處理清除按鈕
+    if clear_button:
+        st.session_state.chat_history = []
+        st.experimental_rerun()
+    
     # 檔案上傳區域
+    st.subheader("檔案處理 (File Processing)")
     uploaded_file = st.file_uploader(
         "上傳檔案 (Upload File)", 
         type=['txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'wav', 'mp3']
@@ -658,7 +819,7 @@ def main():
     elif "LINE 官方帳號管理" in menu:
         show_line_account_management()
     elif "對話測試" in menu:
-        show_chat_test()  # 添加對話測試功能
+        asyncio.run(show_chat_test())  # Update this line
     elif "對話角色管理" in menu:
         show_role_management(role_manager)
     elif "文件管理" in menu:
