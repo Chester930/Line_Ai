@@ -1,0 +1,16 @@
+{
+  "web_search": {
+    "enabled": true,
+    "engine": "Google",
+    "max_results": 3,
+    "weight": 0.3,
+    "timeout": 10
+  },
+  "knowledge_base": {
+    "enabled": true,
+    "embedding_model": "sentence-transformers",
+    "chunk_size": 500,
+    "weight": 0.5,
+    "similarity_threshold": 0.7
+  }
+}
