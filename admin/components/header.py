@@ -2,12 +2,6 @@ import streamlit as st
 
 def show_header():
     """顯示頁面頭部"""
-    st.set_page_config(
-        page_title="Line AI Assistant - 管理介面",
-        page_icon="🤖",
-        layout="wide"
-    )
-    
     st.title("Line AI Assistant 管理介面")
     
     # 顯示版本資訊

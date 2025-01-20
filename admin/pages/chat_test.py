@@ -3,6 +3,7 @@ import asyncio
 from shared.ai.chat_tester import ChatTester
 from shared.utils.role_manager import RoleManager
 from shared.ai.model_manager import ModelManager
+from shared.utils.file_processor import FileProcessor
 
 def show_page():
     """對話測試頁面"""
@@ -19,51 +20,37 @@ def show_page():
     
     # 主要對話區域
     show_chat_interface(chat_tester)
+    
+    # 檔案處理區域
+    show_file_processing()
 
 def show_test_settings(role_manager: RoleManager, model_manager: ModelManager):
     """顯示測試設定"""
-    st.subheader("測試設定")
+    # 獲取所有角色
+    roles = role_manager.get_all_roles()
+    
+    if not roles:
+        st.warning("尚未設定任何角色")
+        return
+    
+    # 轉換為字典格式，方便查找
+    roles_dict = {role['id']: role for role in roles}
     
     # 選擇角色
-    roles = role_manager.list_roles()
-    selected_role = st.selectbox(
+    selected_role_id = st.selectbox(
         "選擇角色",
-        options=list(roles.keys()),
-        format_func=lambda x: roles[x].name
+        options=list(roles_dict.keys()),
+        format_func=lambda x: roles_dict[x]['name']
     )
     
-    # 選擇模型
-    selected_model = st.selectbox(
-        "選擇模型",
-        ["gpt-4-turbo-preview", "gemini-pro", "claude-3-opus"]
-    )
+    selected_role = roles_dict[selected_role_id]
     
-    # 模型參數
-    temperature = st.slider(
-        "Temperature",
-        0.0, 1.0, 0.7
-    )
-    
-    max_tokens = st.number_input(
-        "Max Tokens",
-        100, 4000, 1000
-    )
-    
-    # 功能開關
-    enable_kb = st.checkbox("啟用知識庫", value=True)
-    enable_web = st.checkbox("啟用網路搜尋", value=False)
-    
-    # 儲存設定到 session state
-    if st.button("應用設定"):
-        st.session_state.chat_settings = {
-            'role_id': selected_role,
-            'model': selected_model,
-            'temperature': temperature,
-            'max_tokens': max_tokens,
-            'enable_kb': enable_kb,
-            'enable_web': enable_web
-        }
-        st.success("設定已更新")
+    # 顯示角色設定
+    with st.expander("角色設定", expanded=True):
+        st.write(f"名稱：{selected_role['name']}")
+        st.write(f"提示詞：{selected_role['prompt']}")
+        st.write("模型設定：")
+        st.json(selected_role['settings'])
 
 def show_chat_interface(chat_tester: ChatTester):
     """顯示對話介面"""
@@ -108,4 +95,44 @@ def show_chat_interface(chat_tester: ChatTester):
     # 清除對話按鈕
     if st.button("清除對話"):
         st.session_state.messages = []
-        st.rerun() 
+        st.rerun()
+
+def show_file_processing():
+    """顯示檔案處理區域"""
+    st.subheader("檔案處理")
+    
+    uploaded_file = st.file_uploader(
+        "上傳檔案",
+        type=['txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg', 'wav', 'mp3']
+    )
+    
+    if uploaded_file:
+        try:
+            file_processor = FileProcessor()
+            result = file_processor.process_file(uploaded_file, save_to_db=False)
+            
+            if result['success']:
+                content = result['content']
+                
+                if content['type'] == 'image':
+                    # 使用 Gemini Vision API 進行圖片描述
+                    image_description = model_manager.describe_image(content['image'])
+                    st.write("圖片描述：", image_description)
+                    message = f"這是一張圖片，內容描述如下：\n{image_description}"
+                else:
+                    message = content.get('text', '無法讀取檔案內容')
+                
+                # 添加到對話歷史
+                st.session_state.messages.append({
+                    "role": "user",
+                    "content": message
+                })
+                
+                st.success("檔案處理成功！")
+                st.rerun()
+                
+            else:
+                st.error(f"檔案處理失敗：{result.get('error', '未知錯誤')}")
+                
+        except Exception as e:
+            st.error(f"處理檔案時發生錯誤：{str(e)}") 

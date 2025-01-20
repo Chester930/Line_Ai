@@ -1,7 +1,7 @@
 import os
 import tempfile
 import asyncio
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional, Tuple, Union, Any
 import docx
 import pandas as pd
 import PyPDF2
@@ -218,3 +218,62 @@ class FileProcessor:
             shutil.rmtree(self.temp_dir)
         except:
             pass
+
+    def process_file(self, file) -> Dict[str, Any]:
+        """處理上傳的文件"""
+        try:
+            file_type = file.type
+            content = None
+            
+            # 根據文件類型選擇處理方法
+            if file_type == "text/plain":
+                content = self._process_txt(file)
+            elif file_type == "application/pdf":
+                content = self._process_pdf(file)
+            elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                content = self._process_docx(file)
+            elif file_type == "text/markdown":
+                content = self._process_txt(file)  # Markdown 當作純文本處理
+            else:
+                return {
+                    'success': False,
+                    'error': f'不支援的文件類型：{file_type}'
+                }
+            
+            if content:
+                return {
+                    'success': True,
+                    'content': content
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': '無法讀取文件內容'
+                }
+                
+        except Exception as e:
+            logger.error(f"處理文件時發生錯誤：{str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _process_txt(self, file) -> str:
+        """處理文本文件"""
+        return file.getvalue().decode('utf-8')
+    
+    def _process_pdf(self, file) -> str:
+        """處理 PDF 文件"""
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.getvalue()))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text
+    
+    def _process_docx(self, file) -> str:
+        """處理 Word 文件"""
+        doc = docx.Document(io.BytesIO(file.getvalue()))
+        text = ""
+        for para in doc.paragraphs:
+            text += para.text + "\n"
+        return text

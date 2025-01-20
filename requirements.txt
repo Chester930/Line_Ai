@@ -20,6 +20,12 @@ openpyxl>=3.1.0
 Pillow>=10.0.0
 SpeechRecognition>=3.10.0
 
+# Cloud Services
+google-api-python-client>=2.0.0  # Google Drive API
+google-auth-httplib2>=0.1.0      # Google Auth
+google-auth-oauthlib>=0.4.6      # Google OAuth
+dropbox>=11.36.0                 # Dropbox API
+
 # Config
 python-dotenv==1.0.0
 pydantic==2.5.2
@@ -32,7 +38,5 @@ watchdog==3.0.0
 psutil==5.9.6
 requests==2.31.0
 python-multipart==0.0.6
-
-# 添加以下依賴
-pyttsx3>=2.90  # 語音合成
-soundfile>=0.10.3  # 音訊檔案處理
+pyttsx3>=2.90        # 語音合成
+soundfile>=0.10.3    # 音訊檔案處理

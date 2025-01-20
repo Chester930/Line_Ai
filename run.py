@@ -5,12 +5,19 @@ import logging
 from pathlib import Path
 import psutil
 import json
-from ui.line_bot_ui import start_line_bot
-import streamlit.web.bootstrap as bootstrap
+import subprocess
 
-# 設置日誌
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def run_admin():
+    """啟動管理員介面"""
+    logger.info("啟動管理員介面...")
+    subprocess.run([sys.executable, "-m", "streamlit", "run", "admin/admin_ui.py"])
+
+def run_app():
+    """啟動 LINE Bot 服務"""
+    logger.info("啟動 LINE Bot 服務...")
+    subprocess.run([sys.executable, "ui/line_bot_ui.py"])
 
 class ProjectStatus:
     def __init__(self):
@@ -47,68 +54,41 @@ class ProjectStatus:
         return self.load_status().get("bot_running", False)
 
 def ensure_directories():
-    """確保必要的目錄存在"""
-    directories = ['data', 'data/config', 'data/uploads', 'data/logs']
+    directories = ['config', 'data', 'uploads', 'logs']
     for directory in directories:
-        Path(directory).mkdir(parents=True, exist_ok=True)
-
-def run_admin():
-    """運行管理員界面"""
-    try:
-        import streamlit.web.cli as stcli
-        import sys
-        
-        sys.argv = ["streamlit", "run", "admin/admin_ui.py"]
-        logger.info("Starting admin interface...")
-        sys.exit(stcli.main())
-    except Exception as e:
-        logger.error(f"Error running admin interface: {e}")
-        sys.exit(1)
-
-def run_app():
-    """運行主應用程式"""
-    try:
-        from shared.utils.ngrok_manager import NgrokManager
-        from ui.line_bot_ui import app
-        
-        # 啟動 ngrok
-        ngrok = NgrokManager()
-        webhook_url = ngrok.start()
-        logger.info(f"Webhook URL: {webhook_url}")
-        
-        # 啟動 Line Bot 應用
-        app.run(host='0.0.0.0', port=5000)
-        
-    except Exception as e:
-        logger.error(f"Error starting application: {e}")
-        raise
-    finally:
-        if 'ngrok' in locals():
-            ngrok.stop()
+        Path(directory).mkdir(exist_ok=True)
 
 def main():
-    parser = argparse.ArgumentParser(description='Line AI Assistant')
-    parser.add_argument('--mode', type=str, required=True, 
-                       choices=['bot', 'admin', 'studio'],
-                       help='運行模式: bot/admin/studio')
+    project_status = ProjectStatus()
+    
+    if project_status.is_first_run():
+        logger.info("首次運行，啟動管理員介面")
+        run_admin()
+        project_status.mark_first_run_complete()
+        return
+    
+    if project_status.is_bot_running():
+        logger.error("LINE BOT 正在運行中，請先關閉後再進行設定")
+        sys.exit(1)
+    
+    parser = argparse.ArgumentParser(description='Run Line AI Assistant')
+    parser.add_argument('--mode', type=str, choices=['admin', 'app'], 
+                       help='Choose the mode: admin or app')
     
     args = parser.parse_args()
     
     try:
-        if args.mode == 'bot':
-            logger.info("啟動 LINE Bot 服務...")
-            start_line_bot()
-        elif args.mode == 'admin':
-            logger.info("啟動管理員介面...")
-            bootstrap.run("admin/admin_ui.py", "", [], {})
-        elif args.mode == 'studio':
-            logger.info("啟動 Studio 開發環境...")
-            bootstrap.run("studio/studio_ui.py", "", [], {})
+        if args.mode == 'app':
+            project_status.set_bot_status(True)
+            run_app()
+        else:
+            run_admin()
     except KeyboardInterrupt:
-        logger.info("服務已停止")
+        logger.info("Application stopped by user")
     except Exception as e:
-        logger.error(f"發生錯誤: {str(e)}")
-        sys.exit(1)
+        logger.error(f"Application error: {e}")
+    finally:
+        project_status.set_bot_status(False)
 
 if __name__ == "__main__":
     ensure_directories()
