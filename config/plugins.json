@@ -1,8 +1,8 @@
 {
   "web_search": {
     "enabled": true,
-    "engine": "Google",
-    "max_results": 3,
+    "engine": "DuckDuckGo",
+    "max_results": 6,
     "weight": 0.3,
     "timeout": 10
   },

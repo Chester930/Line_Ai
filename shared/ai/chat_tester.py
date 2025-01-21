@@ -140,3 +140,39 @@ class ChatTester:
     def get_history(self) -> list:
         """獲取對話歷史"""
         return self.chat_history 
+
+    def get_response(self, messages: list, **kwargs) -> str:
+        """同步方式獲取回應"""
+        try:
+            # 設置對話歷史
+            self.chat_history = messages[:-1]  # 不包含最新的用戶消息
+            
+            # 獲取最新的用戶消息
+            user_message = messages[-1]["content"]
+            
+            # 準備角色提示詞
+            role_prompt = ""
+            if "role" in kwargs and hasattr(kwargs["role"], "description"):
+                role_prompt = kwargs["role"].description
+            
+            # 準備模型設定
+            settings = {
+                "model": kwargs.get("model", "gpt-3.5-turbo"),
+                "temperature": kwargs.get("temperature", 0.7),
+                "top_p": kwargs.get("top_p", 0.9),
+                "max_tokens": kwargs.get("max_tokens", 1000)
+            }
+            
+            # 使用 asyncio 運行異步函數
+            import asyncio
+            response = asyncio.run(self.generate_response(
+                message=user_message,
+                role_prompt=role_prompt,
+                settings=settings
+            ))
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"獲取回應時發生錯誤：{str(e)}")
+            return f"獲取回應時發生錯誤：{str(e)}" 

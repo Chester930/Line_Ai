@@ -27,6 +27,7 @@ class Role(Base):
     role_id = Column(String(255), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
+    is_enabled = Column(Boolean, default=True)
     knowledge_base_id = Column(Integer, ForeignKey('knowledge_bases.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

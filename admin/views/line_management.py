@@ -4,6 +4,20 @@ from shared.config.config import Config
 import requests
 import json
 import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+def init_session_state():
+    """初始化 session state"""
+    if 'line_settings_tab' not in st.session_state:
+        st.session_state.line_settings_tab = 'api'
+    if 'show_api_settings' not in st.session_state:
+        st.session_state.show_api_settings = True
+    if 'show_webhook_settings' not in st.session_state:
+        st.session_state.show_webhook_settings = True
+    if 'show_friend_info' not in st.session_state:
+        st.session_state.show_friend_info = True
 
 def test_webhook_url(url: str) -> bool:
     """測試 Webhook URL 是否可訪問"""
@@ -15,32 +29,38 @@ def test_webhook_url(url: str) -> bool:
 
 def show_page():
     """顯示 LINE 官方帳號管理頁面"""
-    st.header("LINE 官方帳號管理 (LINE Official Account Management)")
+    st.title("LINE 官方帳號管理")
     
-    # LINE API 設定
-    with st.expander("API 設定 (API Settings)", expanded=True):
+    # 初始化 session state
+    init_session_state()
+    
+    # 使用 tabs 而不是 expander
+    tab1, tab2, tab3 = st.tabs(["API 設定", "Webhook 設定", "加入好友資訊"])
+    
+    # 從配置文件加載當前設定
+    config = Config()
+    
+    # API 設定標籤頁
+    with tab1:
         st.markdown("""
-        ### LINE 官方帳號設定步驟 (LINE Official Account Setup Steps)
-        1. 前往 LINE Developers Console (Go to LINE Developers Console)
-           [LINE Developers Console](https://developers.line.biz/console/)
-        2. 建立或選擇一個 Provider (Create or select a Provider)
-        3. 建立一個 Messaging API Channel (Create a Messaging API Channel)
-        4. 在 Basic Settings 中可以找到 (In Basic Settings, you can find)：
+        ### LINE 官方帳號設定步驟
+        1. 前往 [LINE Developers Console](https://developers.line.biz/console/)
+        2. 建立或選擇一個 Provider
+        3. 建立一個 Messaging API Channel
+        4. 在 Basic Settings 中可以找到：
            - Channel Secret (頻道密鑰)
-        5. 在 Messaging API 設定中可以找到 (In Messaging API settings, you can find)：
+        5. 在 Messaging API 設定中可以找到：
            - Channel Access Token (頻道存取權杖)
            - Bot Basic ID (機器人 ID)
         """)
         
-        # 從配置文件加載當前設定
-        config = Config()
         current_settings = {
             'LINE_CHANNEL_SECRET': config.LINE_CHANNEL_SECRET,
             'LINE_CHANNEL_ACCESS_TOKEN': config.LINE_CHANNEL_ACCESS_TOKEN,
             'LINE_BOT_ID': config.LINE_BOT_ID
         }
         
-        with st.form("line_settings"):
+        with st.form("line_settings", clear_on_submit=False):
             channel_secret = st.text_input(
                 "Channel Secret",
                 value=current_settings['LINE_CHANNEL_SECRET'],
@@ -65,32 +85,33 @@ def show_page():
                     })
                     st.success("設定已更新，請重新啟動服務以套用更改")
                 except Exception as e:
+                    logger.error(f"保存設定失敗: {str(e)}")
                     st.error(f"保存設定失敗：{str(e)}")
     
-    # Webhook 狀態顯示
-    with st.expander("Webhook 狀態 (Webhook Status)", expanded=True):
+    # Webhook 設定標籤頁
+    with tab2:
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("""
-            ### Webhook 設定說明 (Webhook Setup Instructions)
-            1. 確保 LINE Bot 服務正在運行 (Ensure LINE Bot service is running)：
+            ### Webhook 設定說明
+            1. 確保 LINE Bot 服務正在運行：
                ```bash
                python run.py --mode bot
                ```
-            2. 複製下方的 Webhook URL (Copy the Webhook URL below)
-            3. 前往 LINE Developers Console (Go to LINE Developers Console)
-            4. 在 Messaging API 設定中 (In Messaging API settings)：
-               - 貼上 Webhook URL (Paste the Webhook URL)
-               - 開啟「Use webhook」選項 (Enable "Use webhook" option)
-               - 點擊「Verify」按鈕測試連接 (Click "Verify" button to test connection)
+            2. 複製下方的 Webhook URL
+            3. 前往 LINE Developers Console
+            4. 在 Messaging API 設定中：
+               - 貼上 Webhook URL
+               - 開啟「Use webhook」選項
+               - 點擊「Verify」按鈕測試連接
             """)
         
         with col2:
-            st.markdown("### 服務狀態 (Service Status)")
+            st.markdown("### 服務狀態")
             if check_line_bot_service():
-                st.success("✅ 服務運行中 (Service Running)")
+                st.success("✅ 服務運行中")
             else:
-                st.error("❌ 服務未運行 (Service Not Running)")
+                st.error("❌ 服務未運行")
         
         # 顯示當前 Webhook URL
         st.subheader("當前 Webhook URL")
@@ -113,19 +134,21 @@ def show_page():
         else:
             st.warning("⚠️ 無法獲取 Webhook URL")
     
-    # 機器人資訊
-    if bot_id:
-        with st.expander("加入好友資訊 (Add Friend Information)", expanded=True):
+    # 加入好友資訊標籤頁
+    with tab3:
+        if config.LINE_BOT_ID:
             st.markdown(f"""
-            ### 加入好友方式 (Ways to Add Friend)
-            1. 掃描 QR Code (Scan QR Code)：
-               - 使用 LINE 掃描這個連結 (Use LINE to scan this link)：
-                 [QR Code](https://line.me/R/ti/p/@{bot_id})
-            2. 搜尋 Bot ID (Search Bot ID)：
-               - 在 LINE 搜尋欄位輸入 (Enter in LINE search field)：@{bot_id}
-            3. 點擊好友連結 (Click Friend Link)：
-               - [https://line.me/R/ti/p/@{bot_id}](https://line.me/R/ti/p/@{bot_id})
+            ### 加入好友方式
+            1. 掃描 QR Code：
+               - 使用 LINE 掃描這個連結：
+                 [QR Code](https://line.me/R/ti/p/@{config.LINE_BOT_ID})
+            2. 搜尋 Bot ID：
+               - 在 LINE 搜尋欄位輸入：@{config.LINE_BOT_ID}
+            3. 點擊好友連結：
+               - [https://line.me/R/ti/p/@{config.LINE_BOT_ID}](https://line.me/R/ti/p/@{config.LINE_BOT_ID})
             """)
+        else:
+            st.warning("請先在 API 設定中設定 Bot ID")
 
 def check_line_bot_service():
     """檢查 LINE Bot 服務狀態"""
