@@ -4,24 +4,83 @@ from shared.config.config import Config
 import requests
 import json
 
+def test_webhook_url(url: str) -> bool:
+    """測試 Webhook URL 是否可訪問"""
+    try:
+        response = requests.get(url)
+        return response.status_code == 200
+    except:
+        return False
+
 def show_page():
-    """LINE 官方帳號管理頁面"""
-    st.header("LINE 官方帳號管理")
+    """顯示 LINE 官方帳號管理頁面"""
+    st.header("LINE 官方帳號設定")
     
     config = Config()
-    ngrok_manager = NgrokManager()
+    ngrok = NgrokManager()
     
     # LINE Channel 設定
     with st.expander("Channel 設定", expanded=True):
-        show_channel_settings(config)
+        with st.form("line_channel_settings"):
+            channel_id = st.text_input(
+                "Channel ID",
+                value=config.get("line.channel_id", ""),
+                type="password"
+            )
+            
+            channel_secret = st.text_input(
+                "Channel Secret",
+                value=config.get("line.channel_secret", ""),
+                type="password"
+            )
+            
+            access_token = st.text_input(
+                "Channel Access Token",
+                value=config.get("line.access_token", ""),
+                type="password"
+            )
+            
+            if st.form_submit_button("保存設定"):
+                try:
+                    config.update({
+                        "line.channel_id": channel_id,
+                        "line.channel_secret": channel_secret,
+                        "line.access_token": access_token
+                    })
+                    st.success("✅ LINE Channel 設定已更新")
+                except Exception as e:
+                    st.error(f"❌ 保存失敗：{str(e)}")
     
     # Webhook 設定
     with st.expander("Webhook 設定", expanded=True):
-        show_webhook_settings(config, ngrok_manager)
-    
-    # 官方帳號資訊
-    with st.expander("官方帳號資訊", expanded=True):
-        show_account_info(config)
+        st.write("**目前狀態**")
+        
+        if ngrok.is_running():
+            webhook_url = ngrok.get_public_url()
+            st.success(f"✅ Webhook 運行中：{webhook_url}")
+            
+            if test_webhook_url(webhook_url):
+                st.info("✅ Webhook URL 可正常訪問")
+            else:
+                st.warning("⚠️ Webhook URL 無法訪問")
+            
+            if st.button("停止 Webhook"):
+                try:
+                    ngrok.stop()
+                    st.success("✅ Webhook 已停止")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"❌ 停止失敗：{str(e)}")
+        else:
+            st.warning("⚠️ Webhook 未運行")
+            
+            if st.button("啟動 Webhook"):
+                try:
+                    ngrok.start()
+                    st.success("✅ Webhook 已啟動")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"❌ 啟動失敗：{str(e)}")
 
 def show_channel_settings(config: Config):
     """顯示 Channel 設定"""

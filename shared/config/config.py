@@ -1,19 +1,34 @@
 import os
 from dotenv import load_dotenv
 from pathlib import Path
+import requests
 
 # 加載 .env 文件
 env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(env_path)
 
 class Config:
+    """配置管理類"""
+    
     def __init__(self):
-        load_dotenv()
+        # 加載 .env 文件
+        env_path = Path(__file__).parent.parent.parent / '.env'
+        load_dotenv(env_path)
         
-        # API Keys - 從環境變數讀取，沒有則為 None
-        self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-        self.OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-        self.CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+        # API Keys
+        self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
+        self.OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+        self.ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+        
+        # LINE 設定
+        self.LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET', '')
+        self.LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
+        
+        # Ngrok 設定
+        self.NGROK_AUTH_TOKEN = os.getenv('NGROK_AUTH_TOKEN', '')
+        
+        # 資料庫設定
+        self.DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/app.db')
         
         # 模型設定
         self.MODEL_NAME = os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp')
@@ -30,8 +45,6 @@ class Config:
         self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gemini-2.0-flash-exp')
         
         # LINE Bot Settings
-        self.LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-        self.LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
         self.LINE_BOT_ID = os.getenv('LINE_BOT_ID')
         
         # Google API Settings
@@ -39,10 +52,8 @@ class Config:
         
         # Database Settings
         self.DB_TYPE = os.getenv('DB_TYPE', 'sqlite')
-        self.DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/line_ai.db')
         
         # Ngrok Settings
-        self.NGROK_AUTH_TOKEN = os.getenv('NGROK_AUTH_TOKEN')
         self.NGROK_REGION = os.getenv('NGROK_REGION', 'ap')
         
         # AI Model Settings
@@ -64,6 +75,59 @@ class Config:
         for directory in [self.DATA_DIR, self.CONFIG_DIR, self.UPLOAD_DIR, self.LOG_DIR]:
             os.makedirs(directory, exist_ok=True)
     
+    def check_api_connection(self) -> bool:
+        """檢查 API 連接狀態"""
+        try:
+            # 測試 Google API
+            if self.GOOGLE_API_KEY:
+                response = requests.get(
+                    'https://generativelanguage.googleapis.com/v1beta/models',
+                    params={'key': self.GOOGLE_API_KEY}
+                )
+                if response.status_code != 200:
+                    return False
+            
+            # 測試 OpenAI API
+            if self.OPENAI_API_KEY:
+                headers = {'Authorization': f'Bearer {self.OPENAI_API_KEY}'}
+                response = requests.get(
+                    'https://api.openai.com/v1/models',
+                    headers=headers
+                )
+                if response.status_code != 200:
+                    return False
+            
+            return True
+        except:
+            return False
+    
+    def check_webhook_status(self) -> bool:
+        """檢查 Webhook 狀態"""
+        try:
+            if not (self.LINE_CHANNEL_SECRET and self.LINE_CHANNEL_ACCESS_TOKEN):
+                return False
+                
+            headers = {
+                'Authorization': f'Bearer {self.LINE_CHANNEL_ACCESS_TOKEN}'
+            }
+            response = requests.get(
+                'https://api.line.me/v2/bot/channel/webhook/endpoint',
+                headers=headers
+            )
+            
+            return response.status_code == 200
+        except:
+            return False
+    
+    def get(self, key: str, default=None):
+        """獲取配置值"""
+        return getattr(self, key, default)
+    
+    def update(self, settings: dict):
+        """更新配置"""
+        for key, value in settings.items():
+            setattr(self, key, value)
+    
     def validate(self):
         """驗證必要的配置"""
         required = [
@@ -78,7 +142,7 @@ class Config:
                 missing.append(name)
         
         # 檢查是否至少有一個 AI API
-        if not any([self.GOOGLE_API_KEY, self.OPENAI_API_KEY, self.CLAUDE_API_KEY]):
+        if not any([self.GOOGLE_API_KEY, self.OPENAI_API_KEY, self.ANTHROPIC_API_KEY]):
             missing.append('需要至少設定一個 AI API Key')
         
         if missing:
@@ -124,7 +188,7 @@ class Config:
             models.extend(cls.GOOGLE_ENABLED_MODELS)
         if cls.OPENAI_API_KEY:
             models.extend(cls.OPENAI_ENABLED_MODELS)
-        if cls.CLAUDE_API_KEY:
+        if cls.ANTHROPIC_API_KEY:
             models.extend(cls.CLAUDE_ENABLED_MODELS)
         return models
 

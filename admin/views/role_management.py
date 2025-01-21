@@ -2,23 +2,133 @@ import streamlit as st
 from shared.utils.role_manager import RoleManager
 from shared.database.document_crud import DocumentCRUD
 import json
+import uuid
 
 def show_page():
-    """角色管理頁面"""
+    """顯示角色管理頁面"""
     st.header("角色管理")
     
+    st.info("""
+    角色管理功能正在維護中...
+    
+    即將支援的功能：
+    - 角色創建和編輯
+    - 系統提示詞設定
+    - 知識庫關聯
+    - 對話參數調整
+    """)
+    
     role_manager = RoleManager()
+    doc_crud = DocumentCRUD()
     
-    # 新增角色
-    with st.expander("新增角色", expanded=True):
-        show_add_role_form(role_manager)
+    # 創建新角色
+    with st.expander("➕ 創建新角色", expanded=False):
+        with st.form("create_role"):
+            st.write("請填寫新角色的基本資訊：")
+            role_id = st.text_input(
+                "角色ID (英文)",
+                help="唯一標識符，例如：custom_helper"
+            )
+            name = st.text_input(
+                "角色名稱",
+                help="顯示名稱，例如：客服助手"
+            )
+            description = st.text_area(
+                "角色描述",
+                help="角色的主要功能和特點"
+            )
+            
+            # 選擇共用 prompts
+            st.subheader("選擇共用 Prompts")
+            
+            # 依類別選擇 Prompts
+            categories = {
+                "語言設定": "language",
+                "語氣風格": "tone",
+                "輸出格式": "output_format",
+                "寫作風格": "writing_style",
+                "MBTI 性格": "mbti",
+                "進階性格": "personality"
+            }
+            
+            selected_prompts = {}
+            for zh_cat, en_cat in categories.items():
+                st.write(f"**{zh_cat}**")
+                prompts = role_manager.get_prompts_by_category(en_cat)
+                if prompts:
+                    for prompt_id, data in prompts.items():
+                        selected_prompts[prompt_id] = st.checkbox(
+                            data['description'],
+                            key=f"prompt_{prompt_id}_{uuid.uuid4()}"
+                        )
+            
+            # 選擇知識庫
+            st.subheader("選擇知識庫")
+            knowledge_bases = doc_crud.get_knowledge_bases()
+            selected_kbs = {}
+            
+            if knowledge_bases:
+                for kb in knowledge_bases:
+                    selected_kbs[kb.id] = st.checkbox(
+                        f"{kb.name} ({len(kb.documents)} 份文件)",
+                        key=f"kb_{kb.id}"
+                    )
+            
+            if st.form_submit_button("創建角色"):
+                if role_id and name:
+                    try:
+                        # 創建角色
+                        role = role_manager.create_role(
+                            role_id=role_id,
+                            name=name,
+                            description=description
+                        )
+                        
+                        # 添加選中的提示詞
+                        for prompt_id, selected in selected_prompts.items():
+                            if selected:
+                                role_manager.add_prompt_to_role(role_id, prompt_id)
+                        
+                        # 添加選中的知識庫
+                        for kb_id, selected in selected_kbs.items():
+                            if selected:
+                                doc_crud.add_knowledge_base_to_role(role_id, kb_id)
+                        
+                        st.success("✅ 角色創建成功！")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"❌ 創建失敗：{str(e)}")
+                else:
+                    st.warning("⚠️ 請填寫必要欄位")
     
-    # 現有角色列表
-    st.subheader("現有角色")
-    show_roles_list(role_manager)
+    # 顯示現有角色列表
+    st.subheader("角色列表")
+    roles = role_manager.get_all_roles()
     
-    # 角色匯入/匯出
-    show_import_export(role_manager)
+    for role in roles:
+        with st.expander(f"{role['name']} ({role['role_id']})", expanded=False):
+            st.write(f"描述：{role['description']}")
+            
+            # 顯示使用的提示詞
+            st.write("**使用的提示詞：**")
+            role_prompts = role_manager.get_role_prompts(role['role_id'])
+            for prompt in role_prompts:
+                st.write(f"- {prompt['description']}")
+            
+            # 顯示使用的知識庫
+            st.write("**使用的知識庫：**")
+            role_kbs = doc_crud.get_role_knowledge_bases(role['role_id'])
+            for kb in role_kbs:
+                st.write(f"- {kb.name}")
+            
+            # 刪除角色按鈕
+            if st.button("刪除角色", key=f"del_role_{role['role_id']}"):
+                try:
+                    role_manager.delete_role(role['role_id'])
+                    st.success("✅ 角色已刪除")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"❌ 刪除失敗：{str(e)}")
 
 def show_add_role_form(role_manager: RoleManager):
     """顯示新增角色表單"""

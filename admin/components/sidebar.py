@@ -1,31 +1,28 @@
 import streamlit as st
-from pathlib import Path
 
 def show_sidebar() -> str:
-    """顯示側邊欄並返回選擇的功能"""
+    """顯示側邊欄並返回選單選項"""
+    
+    # 自定義側邊欄
     with st.sidebar:
-        # 檢查 logo 是否存在
-        logo_path = Path("assets/logo.png")
-        if logo_path.exists():
-            st.image(str(logo_path), width=200)
-        else:
-            st.title("Line AI Assistant")
+        st.title("Line AI Assistant")
         
-        # 使用 radio 代替 selectbox，並添加 label
         menu = st.radio(
-            label="功能選單",  # 添加 label 解決警告
+            "功能選單",
             options=[
-                "系統狀態 (System Status)", 
-                "AI 模型設定 (AI Model Settings)", 
-                "LINE 官方帳號 (LINE Official Account)",
-                "對話測試 (Chat Test)",
-                "共用 Prompts (Shared Prompts)",
-                "角色管理 (Role Management)",
-                "插件功能 (Plugin Features)",
-                "知識庫管理 (Knowledge Base)"
+                "系統狀態",
+                "AI 模型設定",
+                "LINE 官方帳號",
+                "對話測試"
             ],
-            label_visibility="collapsed"  # 隱藏 label 但保持可訪問性
+            index=0,
+            key="sidebar_menu"
         )
         
-        # 返回中文選單名稱
-        return menu.split(" (")[0] 
+        st.divider()
+        st.caption("© 2024 Line AI Assistant")
+        
+        # 顯示維護通知
+        st.info("部分功能正在維護中...")
+    
+    return menu 

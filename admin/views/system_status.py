@@ -3,50 +3,39 @@ import psutil
 import platform
 from datetime import datetime
 from shared.config.config import Config
-from shared.database.database import get_db
+from shared.database.database import get_db, check_database_connection
+from shared.utils.system_info import get_system_info
 
 def show_page():
-    """系統狀態頁面"""
+    """顯示系統狀態頁面"""
     st.header("系統狀態 (System Status)")
+    st.write("目前版本 (Current Version)：1.0.0")
     
-    # 系統資訊
+    # 顯示系統資訊
     col1, col2 = st.columns(2)
-    
     with col1:
-        st.info("系統資訊 (System Info)")
-        st.write(f"- OS: {platform.system()} {platform.version()}")
-        st.write(f"- Python: {platform.python_version()}")
-        st.write(f"- CPU 使用率: {psutil.cpu_percent()}%")
-        st.write(f"- 記憶體使用率: {psutil.virtual_memory().percent}%")
-        
-        # 資料庫狀態
-        try:
-            db = next(get_db())
-            db_status = "正常 (Normal)"
-            db.execute("SELECT 1")
-        except Exception as e:
-            db_status = f"異常 (Error: {str(e)})"
-        st.write(f"- 資料庫狀態: {db_status}")
+        st.info("系統設定 (System Settings)")
+        st.write("- 資料庫類型 (Database Type)：SQLite")
+        st.write("- AI 模型 (AI Model)：Gemini Pro")
+        st.write("- 日誌級別 (Log Level)：INFO")
     
     with col2:
-        st.info("服務狀態 (Service Status)")
-        config = Config.get_instance()  # 使用單例模式
+        st.info("運行狀態 (Runtime Status)")
+        if check_database_connection():
+            st.write("- 資料庫連接 (Database Connection)：✅ 正常 (Normal)")
+        else:
+            st.write("- 資料庫連接 (Database Connection)：❌ 異常 (Error)")
         
-        # 檢查各項服務
-        services = {
-            "LINE Bot": check_line_bot_status(),
-            "OpenAI API": check_api_status("OpenAI"),
-            "Google API": check_api_status("Google"),
-            "Anthropic API": check_api_status("Anthropic"),
-            "知識庫服務": check_knowledge_base_status()
-        }
+        config = Config()
+        if config.check_api_connection():
+            st.write("- API 連接 (API Connection)：✅ 正常 (Normal)")
+        else:
+            st.write("- API 連接 (API Connection)：❌ 異常 (Error)")
         
-        for service, status in services.items():
-            st.write(f"- {service}: {status}")
-    
-    # 系統日誌
-    st.subheader("系統日誌 (System Logs)")
-    show_system_logs()
+        if config.check_webhook_status():
+            st.write("- Webhook：✅ 運行中 (Running)")
+        else:
+            st.write("- Webhook：❌ 未啟動 (Not Started)")
 
 def check_line_bot_status() -> str:
     """檢查 LINE Bot 狀態"""

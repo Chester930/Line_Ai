@@ -13,7 +13,8 @@ class MediaAgent:
     """媒體處理代理，負責將圖片和音訊轉換為文字描述"""
     
     def __init__(self):
-        self.api_key = Config.GOOGLE_API_KEY
+        self.config = Config()  # 創建實例
+        self.api_key = self.config.GOOGLE_API_KEY  # 使用實例屬性
         genai.configure(api_key=self.api_key)
         self.vision_model = genai.GenerativeModel('gemini-pro-vision')
         self.recognizer = sr.Recognizer()

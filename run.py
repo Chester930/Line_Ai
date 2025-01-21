@@ -7,6 +7,7 @@ import psutil
 import json
 from ui.line_bot_ui import start_line_bot
 import streamlit.web.bootstrap as bootstrap
+from shared.database.database import init_db, check_database_connection
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
@@ -95,6 +96,13 @@ def main():
     args = parser.parse_args()
     
     try:
+        # 檢查並初始化資料庫
+        if not check_database_connection():
+            logger.info("Initializing database...")
+            if not init_db():
+                logger.error("Failed to initialize database")
+                return
+        
         if args.mode == 'bot':
             logger.info("啟動 LINE Bot 服務...")
             start_line_bot()

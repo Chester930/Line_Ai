@@ -9,8 +9,62 @@ import io
 logger = logging.getLogger(__name__)
 
 class ModelManager:
+    """AI 模型管理類"""
+    
     def __init__(self):
-        self.api_key = Config.GOOGLE_API_KEY
+        self.config = Config()  # 創建 Config 實例
+        self.api_key = self.config.GOOGLE_API_KEY  # 從實例獲取 API key
+        
+        # 支援的模型列表
+        self.models = {
+            "gemini": {
+                "gemini-pro": {
+                    "name": "Gemini Pro",
+                    "type": "text",
+                    "enabled": bool(self.config.GOOGLE_API_KEY)
+                },
+                "gemini-pro-vision": {
+                    "name": "Gemini Pro Vision",
+                    "type": "vision",
+                    "enabled": bool(self.config.GOOGLE_API_KEY)
+                }
+            },
+            "gpt": {
+                "gpt-4-turbo-preview": {
+                    "name": "GPT-4 Turbo",
+                    "type": "text",
+                    "enabled": bool(self.config.OPENAI_API_KEY)
+                },
+                "gpt-4": {
+                    "name": "GPT-4",
+                    "type": "text",
+                    "enabled": bool(self.config.OPENAI_API_KEY)
+                },
+                "gpt-3.5-turbo": {
+                    "name": "GPT-3.5 Turbo",
+                    "type": "text",
+                    "enabled": bool(self.config.OPENAI_API_KEY)
+                }
+            },
+            "claude": {
+                "claude-3-opus-20240229": {
+                    "name": "Claude 3 Opus",
+                    "type": "text",
+                    "enabled": bool(self.config.ANTHROPIC_API_KEY)
+                },
+                "claude-3-sonnet-20240229": {
+                    "name": "Claude 3 Sonnet",
+                    "type": "text",
+                    "enabled": bool(self.config.ANTHROPIC_API_KEY)
+                },
+                "claude-3-haiku-20240229": {
+                    "name": "Claude 3 Haiku",
+                    "type": "text",
+                    "enabled": bool(self.config.ANTHROPIC_API_KEY)
+                }
+            }
+        }
+        
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel('gemini-pro')
         self.role_manager = RoleManager()
@@ -103,3 +157,19 @@ class ModelManager:
         except Exception as e:
             logger.error(f"圖片描述失敗：{str(e)}")
             return "無法描述圖片內容"
+
+    def get_available_models(self):
+        """獲取可用的模型列表"""
+        available_models = {}
+        for provider, models in self.models.items():
+            available = {k: v for k, v in models.items() if v["enabled"]}
+            if available:
+                available_models[provider] = available
+        return available_models
+    
+    def is_model_available(self, model_id: str) -> bool:
+        """檢查指定模型是否可用"""
+        for provider in self.models.values():
+            if model_id in provider:
+                return provider[model_id]["enabled"]
+        return False

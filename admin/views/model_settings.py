@@ -1,25 +1,103 @@
 import streamlit as st
+from pathlib import Path
+from dotenv import dotenv_values
 from shared.config.config import Config
 from shared.ai.model_manager import ModelManager
 
+def test_gemini(api_key: str):
+    """測試 Gemini API"""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        response = model.generate_content("Hello")
+        st.success("✅ Gemini API 連接正常")
+    except Exception as e:
+        st.error(f"❌ Gemini API 測試失敗：{str(e)}")
+
+def test_openai(api_key: str):
+    """測試 OpenAI API"""
+    try:
+        import openai
+        openai.api_key = api_key
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        st.success("✅ OpenAI API 連接正常")
+    except Exception as e:
+        st.error(f"❌ OpenAI API 測試失敗：{str(e)}")
+
+def test_claude(api_key: str):
+    """測試 Claude API"""
+    try:
+        import anthropic
+        client = anthropic.Client(api_key=api_key)
+        response = client.messages.create(
+            model="claude-3-opus-20240229",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        st.success("✅ Claude API 連接正常")
+    except Exception as e:
+        st.error(f"❌ Claude API 測試失敗：{str(e)}")
+
+def update_env_file(updates: dict):
+    """更新 .env 文件"""
+    env_path = Path(__file__).parent.parent.parent / '.env'
+    
+    if env_path.exists():
+        current_env = dotenv_values(env_path)
+    else:
+        current_env = {}
+    
+    current_env.update(updates)
+    
+    with open(env_path, 'w', encoding='utf-8') as f:
+        for key, value in current_env.items():
+            f.write(f"{key}={value}\n")
+
 def show_page():
-    """AI 模型設定頁面"""
-    st.header("AI 模型設定 (AI Model Settings)")
+    """顯示 AI 模型設定頁面"""
+    st.header("AI 模型設定")
     
     config = Config()
-    model_manager = ModelManager()
     
-    # API Keys 設定
-    with st.expander("API Keys 設定", expanded=True):
-        show_api_keys_settings(config)
+    # Google API 設定
+    st.subheader("Google API 設定")
+    google_api_key = st.text_input(
+        "Google API Key",
+        value=config.GOOGLE_API_KEY,
+        type="password"
+    )
     
-    # 模型選擇和設定
-    with st.expander("模型設定", expanded=True):
-        show_model_settings(model_manager)
+    # OpenAI API 設定
+    st.subheader("OpenAI API 設定")
+    openai_api_key = st.text_input(
+        "OpenAI API Key",
+        value=config.OPENAI_API_KEY,
+        type="password"
+    )
     
-    # 模型測試
-    with st.expander("模型測試", expanded=True):
-        show_model_test(model_manager)
+    # Claude API 設定
+    st.subheader("Anthropic (Claude) API 設定")
+    claude_api_key = st.text_input(
+        "Claude API Key",
+        value=config.ANTHROPIC_API_KEY,
+        type="password"
+    )
+    
+    # 保存按鈕
+    if st.button("保存設定"):
+        try:
+            # 更新設定
+            config.update({
+                "GOOGLE_API_KEY": google_api_key,
+                "OPENAI_API_KEY": openai_api_key,
+                "ANTHROPIC_API_KEY": claude_api_key
+            })
+            st.success("設定已更新")
+        except Exception as e:
+            st.error(f"更新失敗: {str(e)}")
 
 def show_api_keys_settings(config: Config):
     """顯示 API Keys 設定"""

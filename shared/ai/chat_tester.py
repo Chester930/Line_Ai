@@ -11,32 +11,23 @@ class ChatTester:
     """獨立的對話測試類，不依賴 LINE 或用戶系統"""
     
     def __init__(self):
-        # 初始化 AI 模型客戶端
-        self.setup_ai_clients()
+        self.config = Config()  # 創建實例
+        self.setup_clients()
         self.chat_history = []  # 添加對話歷史記錄
     
-    def setup_ai_clients(self):
+    def setup_clients(self):
         """設置 AI 模型客戶端"""
-        try:
-            if Config.GOOGLE_API_KEY:
-                import google.generativeai as genai
-                genai.configure(api_key=Config.GOOGLE_API_KEY)
-        except ImportError:
-            logger.warning("Google AI 套件未安裝")
+        # Gemini
+        if self.config.GOOGLE_API_KEY:
+            genai.configure(api_key=self.config.GOOGLE_API_KEY)
         
-        try:
-            if Config.OPENAI_API_KEY:
-                from openai import OpenAI
-                self.openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
-        except ImportError:
-            logger.warning("OpenAI 套件未安裝")
+        # OpenAI
+        if self.config.OPENAI_API_KEY:
+            self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
         
-        try:
-            if Config.CLAUDE_API_KEY:
-                from anthropic import Anthropic
-                self.anthropic_client = Anthropic(api_key=Config.CLAUDE_API_KEY)
-        except ImportError:
-            logger.warning("Anthropic 套件未安裝")
+        # Claude
+        if self.config.ANTHROPIC_API_KEY:
+            self.claude_client = Anthropic(api_key=self.config.ANTHROPIC_API_KEY)
     
     async def generate_response(
         self,
@@ -133,8 +124,8 @@ class ChatTester:
         # 添加當前消息
         messages.append({"role": "user", "content": message})
         
-        response = self.anthropic_client.messages.create(
-            model=settings.get('model', 'claude-3-opus-20240229'),
+        response = self.claude_client.messages.create(
+            model=settings.get('model', 'claude-3-sonnet-20240229'),
             messages=messages,
             temperature=settings.get('temperature', 0.7),
             max_tokens=settings.get('max_tokens', 1000),

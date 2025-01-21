@@ -1,23 +1,83 @@
 import streamlit as st
 from shared.utils.role_manager import RoleManager
 import json
+import uuid
 
 def show_page():
-    """Prompts 管理頁面"""
+    """顯示共用提示詞管理頁面"""
     st.header("共用 Prompts 管理")
     
     role_manager = RoleManager()
     
-    # 新增 Prompt
-    with st.expander("新增 Prompt", expanded=True):
-        show_add_prompt_form(role_manager)
+    # 定義類別映射
+    category_mapping = {
+        "語言設定 (Language)": "language",
+        "語氣風格 (Tone)": "tone",
+        "輸出格式 (Output Format)": "output_format",
+        "寫作風格 (Writing Style)": "writing_style",
+        "MBTI 性格 (MBTI Personality)": "mbti",
+        "進階性格 (Advanced Personality)": "personality"
+    }
     
-    # 現有 Prompts 列表
-    st.subheader("現有 Prompts")
-    show_prompts_list(role_manager)
+    # 新增提示詞
+    with st.expander("➕ 新增提示詞", expanded=False):
+        with st.form("add_prompt"):
+            category = st.selectbox(
+                "類別",
+                options=list(category_mapping.keys())
+            )
+            
+            description = st.text_input(
+                "描述",
+                help="簡短描述這個提示詞的用途"
+            )
+            
+            content = st.text_area(
+                "內容",
+                help="提示詞的具體內容"
+            )
+            
+            if st.form_submit_button("新增"):
+                if description and content:
+                    en_category = category_mapping[category]
+                    try:
+                        role_manager.add_prompt(
+                            category=en_category,
+                            description=description,
+                            content=content
+                        )
+                        st.success("✅ 提示詞新增成功！")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"❌ 新增失敗：{str(e)}")
+                else:
+                    st.warning("⚠️ 請填寫所有必要欄位")
     
-    # 匯入/匯出功能
-    show_import_export(role_manager)
+    # 顯示分類標籤
+    tabs = st.tabs(list(category_mapping.keys()))
+    
+    for tab, (zh_category, en_category) in zip(tabs, category_mapping.items()):
+        with tab:
+            prompts = role_manager.get_prompts_by_category(en_category)
+            if prompts:
+                for prompt_id, data in prompts.items():
+                    with st.expander(f"{data['description']}", expanded=False):
+                        st.code(data['content'], language="markdown")
+                        col1, col2, col3 = st.columns([2,2,1])
+                        with col1:
+                            st.write(f"使用次數：{data.get('usage_count', 0)}")
+                        with col2:
+                            st.write(f"最後更新：{data.get('updated_at', '無記錄')}")
+                        with col3:
+                            if st.button("刪除", key=f"del_{prompt_id}_{uuid.uuid4()}"):
+                                try:
+                                    role_manager.delete_prompt(prompt_id)
+                                    st.success("✅ 提示詞已刪除")
+                                    st.experimental_rerun()
+                                except Exception as e:
+                                    st.error(f"❌ 刪除失敗：{str(e)}")
+            else:
+                st.info(f"目前沒有 {zh_category} 的提示詞")
 
 def show_add_prompt_form(role_manager: RoleManager):
     """顯示新增 Prompt 表單"""
@@ -91,7 +151,7 @@ def show_prompts_list(role_manager: RoleManager):
                 )
             
             with col2:
-                if st.button("刪除", key=f"del_{prompt_id}"):
+                if st.button("刪除", key=f"del_{prompt_id}_{uuid.uuid4()}"):
                     if role_manager.delete_prompt(prompt_id):
                         st.success("已刪除")
                         st.rerun()

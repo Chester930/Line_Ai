@@ -9,17 +9,44 @@ import time
 import logging
 from pathlib import Path
 from shared.config.config import Config
+from pyngrok import ngrok
 
 logger = logging.getLogger(__name__)
 
 class NgrokManager:
-    def __init__(self):
-        self.config = Config()
-        self.base_dir = self.config.DATA_DIR
-        self.ngrok_path = self._get_ngrok_path()
-        self.config_path = os.path.join(self.base_dir, "ngrok.yml")
-        self.process = None
+    def __init__(self, auth_token: str = None):
+        self.auth_token = auth_token
+        self._tunnel = None
         
+    def start(self, port: int = 5000) -> str:
+        """啟動 ngrok 服務"""
+        try:
+            if self.auth_token:
+                ngrok.set_auth_token(self.auth_token)
+            
+            self._tunnel = ngrok.connect(port)
+            return self._tunnel.public_url
+        except Exception as e:
+            logger.error(f"Ngrok 啟動失敗: {str(e)}")
+            return None
+    
+    def stop(self):
+        """停止 ngrok 服務"""
+        try:
+            if self._tunnel:
+                ngrok.disconnect(self._tunnel.public_url)
+                self._tunnel = None
+        except Exception as e:
+            logger.error(f"Ngrok 停止失敗: {str(e)}")
+    
+    def is_running(self) -> bool:
+        """檢查 ngrok 是否正在運行"""
+        return self._tunnel is not None
+    
+    def get_url(self) -> str:
+        """獲取 ngrok 網址"""
+        return self._tunnel.public_url if self._tunnel else None
+
     def _get_ngrok_path(self):
         """獲取 ngrok 執行檔路徑"""
         system = platform.system().lower()
