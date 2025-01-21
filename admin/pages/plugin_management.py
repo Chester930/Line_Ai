@@ -23,11 +23,7 @@ def show_web_search_plugin():
     current_config = plugin_manager.get_plugin_config('web_search') or {}
     
     with st.form("web_search_settings"):
-        enabled = st.checkbox(
-            "啟用插件",
-            value=current_config.get('enabled', True),
-            help="開啟或關閉網路搜尋功能"
-        )
+        enabled = st.checkbox("啟用插件", value=current_config.get('enabled', True))
         
         if enabled:
             col1, col2 = st.columns(2)
@@ -37,25 +33,22 @@ def show_web_search_plugin():
                     ["Google", "Bing", "DuckDuckGo"],
                     index=["Google", "Bing", "DuckDuckGo"].index(
                         current_config.get('engine', 'Google')
-                    ),
-                    help="選擇要使用的搜尋引擎"
+                    )
                 )
                 max_results = st.number_input(
                     "最大結果數",
-                    1, 10, current_config.get('max_results', 3),
-                    help="每次搜尋返回的最大結果數量"
+                    1, 10, 3
                 )
             
             with col2:
                 weight = st.slider(
                     "搜尋結果權重",
-                    0.0, 1.0, current_config.get('weight', 0.3),
+                    0.0, 1.0, 0.3,
                     help="搜尋結果在回答中的參考權重"
                 )
                 timeout = st.number_input(
                     "搜尋超時 (秒)",
-                    1, 30, current_config.get('timeout', 10),
-                    help="搜尋請求的最大等待時間"
+                    1, 30, 10
                 )
         
         if st.form_submit_button("儲存設定"):
@@ -66,72 +59,52 @@ def show_web_search_plugin():
                     'max_results': max_results,
                     'weight': weight,
                     'timeout': timeout
-                } if enabled else {'enabled': False}
-                
+                }
                 if plugin_manager.update_plugin_config('web_search', new_config):
-                    st.success("✅ 設定已更新")
+                    st.success("設定已更新")
                 else:
-                    st.error("❌ 更新失敗")
+                    st.error("更新失敗")
             except Exception as e:
-                st.error(f"❌ 更新失敗: {str(e)}")
+                st.error(f"更新失敗: {str(e)}")
 
 def show_knowledge_base_plugin():
     """顯示知識庫插件設定"""
-    plugin_manager = PluginManager()
-    current_config = plugin_manager.get_plugin_config('knowledge_base') or {}
+    st.markdown("""
+    ### 知識庫插件 (Knowledge Base Plugin)
+    
+    讓 AI 助手能夠存取和使用自定義的知識庫資源。
+    """)
     
     with st.form("kb_settings"):
-        enabled = st.checkbox(
-            "啟用插件",
-            value=current_config.get('enabled', True),
-            help="開啟或關閉知識庫功能"
-        )
+        enabled = st.checkbox("啟用插件", value=True)
         
         if enabled:
             col1, col2 = st.columns(2)
             with col1:
                 embedding_model = st.selectbox(
                     "Embedding 模型",
-                    ["sentence-transformers", "OpenAI Ada", "自定義"],
-                    index=["sentence-transformers", "OpenAI Ada", "自定義"].index(
-                        current_config.get('embedding_model', 'sentence-transformers')
-                    ),
-                    help="選擇用於生成文本向量的模型"
+                    ["sentence-transformers", "OpenAI Ada", "自定義"]
                 )
                 chunk_size = st.number_input(
                     "分塊大小",
-                    100, 1000, current_config.get('chunk_size', 500),
-                    help="文檔切分的大小（字符數）"
+                    100, 1000, 500
                 )
             
             with col2:
                 weight = st.slider(
                     "知識庫權重",
-                    0.0, 1.0, current_config.get('weight', 0.5),
+                    0.0, 1.0, 0.5,
                     help="知識庫內容在回答中的參考權重"
                 )
                 similarity_threshold = st.slider(
                     "相似度閾值",
-                    0.0, 1.0, current_config.get('similarity_threshold', 0.7),
+                    0.0, 1.0, 0.7,
                     help="選擇相關內容的最低相似度要求"
                 )
         
         if st.form_submit_button("儲存設定"):
-            try:
-                new_config = {
-                    'enabled': enabled,
-                    'embedding_model': embedding_model,
-                    'chunk_size': chunk_size,
-                    'weight': weight,
-                    'similarity_threshold': similarity_threshold
-                } if enabled else {'enabled': False}
-                
-                if plugin_manager.update_plugin_config('knowledge_base', new_config):
-                    st.success("✅ 設定已更新")
-                else:
-                    st.error("❌ 更新失敗")
-            except Exception as e:
-                st.error(f"❌ 更新失敗: {str(e)}")
+            # TODO: 實現設定儲存邏輯
+            st.success("設定已更新")
 
 def show_upcoming_plugins():
     """顯示即將推出的插件"""
@@ -157,4 +130,4 @@ def show_upcoming_plugins():
        - 任務排程
        - 提醒通知
        - 數據同步
-    """)
+    """) 

@@ -30,6 +30,7 @@ def show_add_role_form(role_manager: RoleManager):
                 "角色 ID",
                 help="唯一識別碼，例如：customer_service"
             )
+            
             name = st.text_input(
                 "名稱",
                 help="顯示用的名稱"
@@ -40,6 +41,7 @@ def show_add_role_form(role_manager: RoleManager):
                 "類別",
                 ["一般", "客服", "專業", "創意"]
             )
+            
             language = st.selectbox(
                 "主要語言",
                 ["中文", "英文", "日文", "多語言"]
@@ -50,88 +52,25 @@ def show_add_role_form(role_manager: RoleManager):
             help="角色的詳細說明"
         )
         
-        # 選擇共用 prompts
-        st.subheader("選擇共用 Prompts")
-        
-        # 依類別選擇 Prompts
-        categories = {
-            "語言設定": "language",
-            "語氣風格": "tone",
-            "輸出格式": "output_format",
-            "寫作風格": "writing_style",
-            "MBTI 性格": "mbti",
-            "進階性格": "personality"
-        }
-        
-        selected_prompts = {}
-        available_prompts = role_manager.get_available_prompts()
-        
-        for zh_category, en_category in categories.items():
-            # 獲取該類別的所有 prompts
-            category_prompts = role_manager.get_prompts_by_category(en_category)
-            
-            if en_category == "mbti":
-                # MBTI 性格使用單選
-                st.write(f"選擇 {zh_category}：")
-                prompt_options = ["預設 (Default)"] + [
-                    f"{k} - {v['description']}"
-                    for k, v in category_prompts.items()
-                ]
-                
-                selected = st.selectbox(
-                    "選擇 MBTI 性格類型",
-                    options=prompt_options,
-                    key=f"select_{en_category}"
-                )
-                
-                if selected != "預設 (Default)":
-                    prompt_id = selected.split(" - ")[0]
-                    selected_prompts[en_category] = prompt_id
-                    
-            elif en_category == "personality":
-                # 進階性格使用多選
-                st.write(f"選擇{zh_category}（可複選）：")
-                prompt_options = [
-                    f"{k} - {v['description']}"
-                    for k, v in category_prompts.items()
-                ]
-                
-                selected_traits = st.multiselect(
-                    "選擇進階性格特徵",
-                    options=prompt_options,
-                    key=f"select_{en_category}"
-                )
-                
-                if selected_traits:
-                    selected_prompts[en_category] = [
-                        trait.split(" - ")[0] for trait in selected_traits
-                    ]
-            else:
-                # 其他類別使用單選
-                prompt_options = ["預設 (Default)"] + [
-                    f"{k} - {v['description']}"
-                    for k, v in category_prompts.items()
-                ]
-                
-                selected = st.selectbox(
-                    f"選擇{zh_category}",
-                    options=prompt_options,
-                    key=f"select_{en_category}"
-                )
-                
-                if selected != "預設 (Default)":
-                    prompt_id = selected.split(" - ")[0]
-                    selected_prompts[en_category] = prompt_id
-        
         role_prompt = st.text_area(
-            "角色專屬提示詞",
-            help="設定角色的特定行為和回應方式"
+            "角色 Prompt",
+            height=200,
+            help="定義角色的主要 Prompt"
         )
         
-        # 插件設定
-        st.subheader("插件設定")
-        col1, col2 = st.columns(2)
+        # 選擇基礎 Prompts
+        available_prompts = role_manager.get_available_prompts()
+        if available_prompts:
+            selected_prompts = st.multiselect(
+                "選擇基礎 Prompts",
+                options=list(available_prompts.keys()),
+                format_func=lambda x: f"{available_prompts[x]['name']} ({x})"
+            )
         
+        # 進階設定
+        st.subheader("進階設定")
+        
+        col1, col2 = st.columns(2)
         with col1:
             web_search = st.checkbox(
                 "啟用網路搜尋",
@@ -140,7 +79,7 @@ def show_add_role_form(role_manager: RoleManager):
             
             if web_search:
                 web_search_weight = st.slider(
-                    "網路搜尋參考權重",
+                    "搜尋結果權重",
                     0.0, 1.0, 0.3
                 )
                 max_search_results = st.number_input(
@@ -156,7 +95,7 @@ def show_add_role_form(role_manager: RoleManager):
             
             if knowledge_base:
                 kb_weight = st.slider(
-                    "知識庫參考權重",
+                    "知識庫權重",
                     0.0, 1.0, 0.5
                 )
                 
@@ -197,72 +136,59 @@ def show_add_role_form(role_manager: RoleManager):
                     base_prompts=selected_prompts,
                     settings=settings
                 ):
-                    st.success("✅ 角色創建成功")
+                    st.success("角色創建成功")
                     st.rerun()
                 else:
-                    st.error("❌ 創建失敗")
+                    st.error("創建失敗")
             except Exception as e:
-                st.error(f"❌ 創建失敗: {str(e)}")
+                st.error(f"創建失敗: {str(e)}")
 
 def show_roles_list(role_manager: RoleManager):
-    """顯示角色列表"""
-    roles = role_manager.get_all_roles()
+    """顯示現有角色列表"""
+    roles = role_manager.list_roles()
     
     if not roles:
-        st.info("目前沒有任何角色")
+        st.info("目前沒有角色")
         return
     
-    for role in roles:
-        with st.expander(f"{role['name']} ({role['id']})", expanded=False):
-            col1, col2 = st.columns([3,1])
-            
-            with col1:
-                st.text_area(
-                    "提示詞",
-                    value=role['prompt'],
-                    height=150,
-                    key=f"prompt_{role['id']}"
-                )
-                
-                st.json(role['settings'])
+    for role_id, role in roles.items():
+        with st.expander(f"{role.name} ({role_id})", expanded=False):
+            show_role_details(role, role_manager)
 
 def show_role_details(role, role_manager: RoleManager):
     """顯示角色詳細資訊"""
     col1, col2 = st.columns([3,1])
     
     with col1:
-        st.write(f"描述：{getattr(role, 'description', '無描述')}")
-        st.write(f"類別：{getattr(role, 'category', '未分類')}")
-        st.write(f"語言：{getattr(role, 'language', '未設定')}")
+        st.write(f"描述：{role.description}")
+        st.write(f"類別：{role.category}")
+        st.write(f"語言：{role.language}")
         
-        # 使用 columns 代替嵌套的 expander
-        st.subheader("角色 Prompt")
-        st.text_area(
-            "內容",
-            value=getattr(role, 'role_prompt', ''),
-            height=100,
-            disabled=True,
-            key=f"prompt_{role.id}"  # 添加唯一的 key
-        )
+        with st.expander("角色 Prompt"):
+            st.text_area(
+                "內容",
+                value=role.role_prompt,
+                height=100,
+                disabled=True
+            )
         
-        base_prompts = getattr(role, 'base_prompts', [])
-        if base_prompts:
-            st.subheader("使用的基礎 Prompts")
-            for prompt_id in base_prompts:
-                prompt = role_manager.get_prompt(prompt_id)
-                if prompt:
-                    st.write(f"- {prompt.get('name', prompt_id)}")
+        if role.base_prompts:
+            with st.expander("使用的基礎 Prompts"):
+                for prompt_id in role.base_prompts:
+                    prompt = role_manager.get_prompt(prompt_id)
+                    if prompt:
+                        st.write(f"- {prompt['name']}")
     
     with col2:
-        if st.button("刪除", key=f"del_role_{role.id}"):
-            if role_manager.delete_role(role.id):
-                st.success("✅ 已刪除")
+        if st.button("刪除", key=f"del_role_{role_id}"):
+            if role_manager.delete_role(role_id):
+                st.success("已刪除")
                 st.rerun()
             else:
-                st.error("❌ 刪除失敗")
+                st.error("刪除失敗")
         
-        if st.button("編輯", key=f"edit_role_{role.id}"):
-            st.session_state.editing_role = role.id
+        if st.button("編輯", key=f"edit_role_{role_id}"):
+            st.session_state.editing_role = role_id
             st.rerun()
 
 def show_import_export(role_manager: RoleManager):
@@ -292,7 +218,7 @@ def show_import_export(role_manager: RoleManager):
             try:
                 content = json.loads(uploaded_file.getvalue())
                 success_count = role_manager.import_roles(content)
-                st.success(f"✅ 成功匯入 {success_count} 個角色")
+                st.success(f"成功匯入 {success_count} 個角色")
                 st.rerun()
             except Exception as e:
-                st.error(f"❌ 匯入失敗: {str(e)}")
+                st.error(f"匯入失敗: {str(e)}") 

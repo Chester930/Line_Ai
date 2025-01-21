@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 
 class ModelManager:
     def __init__(self):
-        config = Config()  # 創建 Config 實例
-        self.api_key = config.GOOGLE_API_KEY
+        self.api_key = Config.GOOGLE_API_KEY
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel('gemini-pro')
         self.role_manager = RoleManager()

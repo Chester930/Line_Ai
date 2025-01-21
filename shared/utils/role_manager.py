@@ -2,9 +2,8 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List
 from shared.config.config import Config
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -488,37 +487,34 @@ class RoleManager:
     }
     
     def __init__(self):
-        self.roles_file = Path("data/config/roles.json")
-        self.prompts_file = Path("data/config/prompts.json")
+        # 創建 Config 實例
+        self.config = Config()
         
-        # 初始化基本屬性
-        self.roles = {}
-        self.custom_prompts = {}
-        self.prompts = {}
+        # 使用實例屬性而不是類屬性
+        self.config_dir = os.path.join(self.config.DATA_DIR, "config")
+        self.roles_file = os.path.join(self.config_dir, "roles.json")
+        self.prompts_file = os.path.join(self.config_dir, "custom_prompts.json")
         
-        # 載入資料
-        self._init_data()
-    
-    def _init_data(self):
-        """初始化所有數據"""
-        try:
-            # 載入角色設定
-            self.roles = self._load_roles()
-            
-            # 如果沒有任何角色，創建預設角色
-            if not self.roles:
-                self.import_default_roles()
-            
-            # 載入提示詞
-            self.custom_prompts = self._load_prompts()
-            self.prompts = self._merge_prompts()
-            
-        except Exception as e:
-            logger.error(f"初始化數據失敗: {str(e)}")
-            # 使用空的數據結構
-            self.roles = {}
-            self.custom_prompts = {}
-            self.prompts = {}
+        # 確保目錄存在
+        os.makedirs(self.config_dir, exist_ok=True)
+        
+        # 分別存儲預設和自定義的 prompts
+        self.prompts_file = os.path.join(self.config_dir, "custom_prompts.json")
+        
+        # 加載 prompts
+        self.custom_prompts = self._load_prompts()
+        self.prompts = self._merge_prompts()
+        
+        # 加載角色配置
+        self._roles_data = self._load_roles()
+        # 將 JSON 數據轉換為 Role 對象
+        self.roles = {
+            role_id: Role(role_id, data) 
+            for role_id, data in self._roles_data.items()
+        }
+        
+        # 為每個角色加載共用 prompts 內容
+        self._load_base_prompts_for_roles()
     
     def _merge_prompts(self) -> Dict:
         """合併預設和自定義的 prompts"""
@@ -562,26 +558,44 @@ class RoleManager:
             return False
     
     def _load_roles(self) -> Dict:
-        """載入角色設定"""
-        if self.roles_file.exists():
+        """從文件加載角色配置"""
+        if os.path.exists(self.roles_file):
             try:
                 with open(self.roles_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"載入角色設定失敗: {str(e)}")
+                logger.error(f"加載角色配置失敗: {str(e)}")
                 return {}
         return {}
     
     def _save_roles(self) -> bool:
-        """保存角色設定"""
+        """保存角色配置到文件"""
         try:
-            self.roles_file.parent.mkdir(parents=True, exist_ok=True)
+            # 將 Role 對象轉換回字典格式
+            roles_data = {
+                role_id: {
+                    'name': role.name,
+                    'description': role.description,
+                    'prompt': role.prompt,
+                    'settings': role.settings
+                }
+                for role_id, role in self.roles.items()
+            }
+            
             with open(self.roles_file, 'w', encoding='utf-8') as f:
-                json.dump(self.roles, f, ensure_ascii=False, indent=2)
+                json.dump(roles_data, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
-            print(f"保存角色設定失敗: {str(e)}")
+            logger.error(f"保存角色配置失敗: {str(e)}")
             return False
+    
+    def _load_base_prompts_for_roles(self):
+        """為每個角色加載共用 prompts 內容"""
+        for role in self.roles.values():
+            role._base_prompts_content = [
+                self.prompts.get(prompt_id, '')
+                for prompt_id in role.base_prompts
+            ]
     
     def create_prompt(self, prompt_id: str, content: str, description: str = "", 
                      prompt_type: str = "Others", category: str = "custom") -> bool:
@@ -614,8 +628,8 @@ class RoleManager:
             return False  # 不能刪除預設 prompt
         
         # 檢查是否有角色正在使用
-        for role_id, role_data in self.roles.items():
-            if prompt_id in role_data['base_prompts']:
+        for role in self.roles.values():
+            if prompt_id in role.base_prompts.values():
                 return False
         
         del self.custom_prompts[prompt_id]
@@ -661,14 +675,14 @@ class RoleManager:
                 default_settings.update(settings)
             
             # 創建新角色
-            self.roles[role_id] = {
-                'name': name,
-                'description': description,
-                'prompt': role_prompt,
-                'settings': default_settings,
-                'created_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
-            }
+            self.roles[role_id] = Role(
+                role_id=role_id,
+                name=name,
+                description=description,
+                role_prompt=role_prompt,
+                base_prompts=base_prompts,
+                settings=default_settings
+            )
             
             # 保存到文件
             self._save_roles()
@@ -686,17 +700,15 @@ class RoleManager:
             if role_id not in self.roles:
                 return False
             
-            role_data = self.roles[role_id]
+            role = self.roles[role_id]
             if name is not None:
-                role_data['name'] = name
+                role.name = name
             if description is not None:
-                role_data['description'] = description
+                role.description = description
             if prompt is not None:
-                role_data['prompt'] = prompt
+                role.prompt = prompt
             if settings is not None:
-                role_data['settings'].update(settings)
-            
-            role_data['updated_at'] = datetime.now().isoformat()
+                role.settings.update(settings)
             
             return self._save_roles()
         except Exception as e:
@@ -715,21 +727,11 @@ class RoleManager:
             logger.error(f"刪除角色失敗: {str(e)}")
             return False
     
-    def get_role(self, role_id: str) -> Optional[Dict]:
-        """獲取單個角色"""
-        role_data = self.roles.get(role_id)
-        if role_data:
-            return {
-                'id': role_id,
-                'name': role_data.get('name', role_id),
-                'prompt': role_data.get('prompt', ''),
-                'settings': role_data.get('settings', {}),
-                'created_at': role_data.get('created_at'),
-                'updated_at': role_data.get('updated_at')
-            }
-        return None
+    def get_role(self, role_id: str) -> Optional[Role]:
+        """獲取角色"""
+        return self.roles.get(role_id)
     
-    def list_roles(self) -> Dict[str, Dict]:
+    def list_roles(self) -> Dict[str, Role]:
         """列出所有角色"""
         return self.roles
     
@@ -777,8 +779,9 @@ class RoleManager:
         try:
             for role_id, data in default_roles.items():
                 if role_id not in self.roles:
-                    self.roles[role_id] = data
+                    self.roles[role_id] = Role(role_id, data)
             
+            self._load_base_prompts_for_roles()
             return self._save_roles()
         except Exception as e:
             logger.error(f"導入預設角色失敗: {str(e)}")
@@ -798,17 +801,3 @@ class RoleManager:
     def get_available_prompts(self) -> Dict:
         """獲取所有可用的 prompts（包括預設和自定義）"""
         return self.prompts
-    
-    def get_all_roles(self) -> List[Dict[str, Any]]:
-        """獲取所有角色"""
-        return [
-            {
-                'id': role_id,
-                'name': role_data.get('name', role_id),
-                'prompt': role_data.get('role_prompt', ''),
-                'settings': role_data.get('settings', {}),
-                'created_at': role_data.get('created_at'),
-                'updated_at': role_data.get('updated_at')
-            }
-            for role_id, role_data in self.roles.items()
-        ]

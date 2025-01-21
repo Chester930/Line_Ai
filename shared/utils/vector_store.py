@@ -7,147 +7,58 @@ class VectorStore:
     """向量存儲和搜索"""
     
     def __init__(self):
-        self.model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
-        self.doc_crud = DocumentCRUD()
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')  # 使用輕量級模型
+        self.document_crud = DocumentCRUD()
     
-    def encode(self, text: str) -> np.ndarray:
-        """將文本編碼為向量"""
-        return self.model.encode(text)
+    def get_embedding(self, text: str) -> List[float]:
+        """獲取文本的向量嵌入"""
+        embedding = self.model.encode(text)
+        return embedding.tolist()
     
     def search(
         self,
         query: str,
-        filters: Optional[Dict] = None,
         top_k: int = 5,
         threshold: float = 0.5
     ) -> List[Dict]:
-        """搜索相似內容
+        """搜索相關文檔片段"""
+        # 獲取查詢的向量表示
+        query_embedding = self.get_embedding(query)
         
-        Args:
-            query: 搜索查詢
-            filters: 過濾條件，包含 knowledge_base_ids 和 folder_ids
-            top_k: 返回結果數量
-            threshold: 相似度閾值
-            
-        Returns:
-            List[Dict]: 搜索結果列表
-        """
-        # 對查詢文本進行向量化
-        query_vector = self.encode(query)
-        
-        # 構建查詢條件
-        conditions = []
-        if filters:
-            if filters.get("knowledge_base_ids"):
-                conditions.append(
-                    "d.knowledge_base_id IN :kb_ids"
-                )
-            if filters.get("folder_ids"):
-                conditions.append(
-                    "d.folder_id IN :folder_ids"
-                )
-        
-        # 構建 SQL 查詢
-        sql = """
-            SELECT 
-                dc.id,
-                dc.document_id,
-                dc.content,
-                dc.embedding,
-                d.title,
-                d.file_type,
-                d.knowledge_base_id,
-                d.folder_id
-            FROM document_chunks dc
-            JOIN documents d ON dc.document_id = d.id
-        """
-        
-        if conditions:
-            sql += " WHERE " + " AND ".join(conditions)
-        
-        # 執行查詢
-        params = {}
-        if filters:
-            if filters.get("knowledge_base_ids"):
-                params["kb_ids"] = filters["knowledge_base_ids"]
-            if filters.get("folder_ids"):
-                params["folder_ids"] = filters["folder_ids"]
-        
-        chunks = self.doc_crud.db.execute(sql, params).fetchall()
+        # 獲取所有文檔片段
+        all_chunks = []
+        for doc in self.document_crud.get_all_documents():
+            chunks = self.document_crud.get_document_chunks(doc.id)
+            all_chunks.extend(chunks)
         
         # 計算相似度並排序
         results = []
-        for chunk in chunks:
-            chunk_vector = np.array(chunk.embedding)
-            similarity = np.dot(query_vector, chunk_vector) / (
-                np.linalg.norm(query_vector) * np.linalg.norm(chunk_vector)
-            )
-            
-            if similarity >= threshold:
-                results.append({
-                    'chunk_id': chunk.id,
-                    'document_id': chunk.document_id,
-                    'content': chunk.content,
-                    'similarity': float(similarity)
-                })
+        for chunk in all_chunks:
+            if chunk.embedding:  # 確保有向量嵌入
+                similarity = self._cosine_similarity(
+                    query_embedding,
+                    chunk.embedding
+                )
+                
+                if similarity >= threshold:
+                    results.append({
+                        'document_id': chunk.document_id,
+                        'chunk_id': chunk.id,
+                        'content': chunk.content,
+                        'similarity': similarity
+                    })
         
-        # 按相似度排序並返回 top_k 結果
+        # 按相似度排序
         results.sort(key=lambda x: x['similarity'], reverse=True)
         return results[:top_k]
     
-    def add_document(self, document_id: int, chunk_size: int = 500) -> bool:
-        """添加文件到向量存儲
+    def _cosine_similarity(self, v1: List[float], v2: List[float]) -> float:
+        """計算餘弦相似度"""
+        v1_array = np.array(v1)
+        v2_array = np.array(v2)
         
-        Args:
-            document_id: 文件ID
-            chunk_size: 文本分塊大小
-            
-        Returns:
-            bool: 是否成功
-        """
-        try:
-            # 獲取文件
-            doc = self.doc_crud.get_document(document_id)
-            if not doc:
-                return False
-            
-            # 分塊並向量化
-            chunks = self._split_text(doc.content, chunk_size)
-            for chunk in chunks:
-                embedding = self.encode(chunk)
-                
-                # 保存到數據庫
-                self.doc_crud.create_document_chunk(
-                    document_id=doc.id,
-                    content=chunk,
-                    embedding=embedding.tolist()
-                )
-            
-            # 更新文件狀態
-            self.doc_crud.update_document_status(
-                doc_id=doc.id,
-                status="completed"
-            )
-            
-            return True
-        except Exception as e:
-            print(f"Error adding document to vector store: {str(e)}")
-            return False
-    
-    def _split_text(self, text: str, chunk_size: int) -> List[str]:
-        """將文本分塊
+        dot_product = np.dot(v1_array, v2_array)
+        norm_v1 = np.linalg.norm(v1_array)
+        norm_v2 = np.linalg.norm(v2_array)
         
-        Args:
-            text: 要分塊的文本
-            chunk_size: 每塊的大小
-            
-        Returns:
-            List[str]: 文本塊列表
-        """
-        # 簡單按字符數分塊，可以根據需要改進分塊策略
-        chunks = []
-        for i in range(0, len(text), chunk_size):
-            chunk = text[i:i + chunk_size]
-            if chunk.strip():  # 忽略空白塊
-                chunks.append(chunk)
-        return chunks 
+        return dot_product / (norm_v1 * norm_v2) 

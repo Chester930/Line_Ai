@@ -11,18 +11,17 @@ def show_sidebar() -> str:
         else:
             st.title("Line AI Assistant")
         
-        # 使用原本的選單項目
         menu = st.selectbox(
             "選擇功能 (Select Function)",
             [
                 "系統狀態 (System Status)", 
                 "AI 模型設定 (AI Model Settings)", 
-                "LINE 官方帳號管理 (LINE Official Account)",
+                "LINE 官方帳號 (LINE Official Account)",
                 "對話測試 (Chat Test)",
-                "共用 Prompts 管理 (Shared Prompts)",
+                "共用 Prompts (Shared Prompts)",
                 "角色管理 (Role Management)",
-                "插件功能列表 (Plugin Features)",
-                "文件管理 (Document Management)"  # 改回原本的文件管理
+                "插件功能 (Plugin Features)",
+                "知識庫管理 (Knowledge Base)"
             ]
         )
         

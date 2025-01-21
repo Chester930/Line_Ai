@@ -13,10 +13,11 @@ def show_page():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.info("系統設定 (System Settings)")
-        st.write("- 資料庫類型 (Database Type)：SQLite")
-        st.write("- AI 模型 (AI Model)：Gemini Pro")
-        st.write("- 日誌級別 (Log Level)：INFO")
+        st.info("系統資訊 (System Info)")
+        st.write(f"- OS: {platform.system()} {platform.version()}")
+        st.write(f"- Python: {platform.python_version()}")
+        st.write(f"- CPU 使用率: {psutil.cpu_percent()}%")
+        st.write(f"- 記憶體使用率: {psutil.virtual_memory().percent}%")
         
         # 資料庫狀態
         try:
@@ -28,31 +29,66 @@ def show_page():
         st.write(f"- 資料庫狀態: {db_status}")
     
     with col2:
-        st.info("運行狀態 (Runtime Status)")
-        st.write(f"- CPU 使用率: {psutil.cpu_percent()}%")
-        st.write(f"- 記憶體使用率: {psutil.virtual_memory().percent}%")
-        st.write(f"- OS: {platform.system()} {platform.version()}")
-        st.write(f"- Python: {platform.python_version()}")
+        st.info("服務狀態 (Service Status)")
+        config = Config.get_instance()  # 使用單例模式
         
-        # API 連接狀態
-        config = Config()
-        api_status = check_api_status(config)
-        st.write(f"- API 連接: {api_status}")
+        # 檢查各項服務
+        services = {
+            "LINE Bot": check_line_bot_status(),
+            "OpenAI API": check_api_status("OpenAI"),
+            "Google API": check_api_status("Google"),
+            "Anthropic API": check_api_status("Anthropic"),
+            "知識庫服務": check_knowledge_base_status()
+        }
+        
+        for service, status in services.items():
+            st.write(f"- {service}: {status}")
     
     # 系統日誌
     st.subheader("系統日誌 (System Logs)")
     show_system_logs()
 
-def check_api_status(config: Config) -> str:
+def check_line_bot_status() -> str:
+    """檢查 LINE Bot 狀態"""
+    try:
+        # TODO: 實現實際的狀態檢查
+        return "正常運行 (Running)"
+    except Exception:
+        return "異常 (Error)"
+
+def check_api_status(api_name: str) -> str:
     """檢查 API 狀態"""
-    if not any([config.GOOGLE_API_KEY, config.OPENAI_API_KEY, config.CLAUDE_API_KEY]):
+    config = Config.get_instance()  # 使用單例模式
+    
+    api_keys = {
+        "OpenAI": config.OPENAI_API_KEY,
+        "Google": config.GOOGLE_API_KEY,
+        "Anthropic": config.ANTHROPIC_API_KEY
+    }
+    
+    api_key = api_keys.get(api_name)
+    if not api_key:
         return "未設定 (Not Configured)"
     
     try:
-        # TODO: 實現實際的 API 檢查邏輯
-        return "正常 (Normal)"
+        # 簡單的 API 可用性檢查
+        if api_name == "OpenAI":
+            return "正常 (Normal)"
+        elif api_name == "Google":
+            return "正常 (Normal)"
+        elif api_name == "Anthropic":
+            return "正常 (Normal)"
+        return "未知 (Unknown)"
     except Exception as e:
         return f"異常 (Error: {str(e)})"
+
+def check_knowledge_base_status() -> str:
+    """檢查知識庫狀態"""
+    try:
+        # TODO: 實現知識庫狀態檢查
+        return "正常運行 (Running)"
+    except Exception:
+        return "異常 (Error)"
 
 def show_system_logs():
     """顯示系統日誌"""

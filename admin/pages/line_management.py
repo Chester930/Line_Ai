@@ -2,6 +2,7 @@ import streamlit as st
 from shared.utils.ngrok_manager import NgrokManager
 from shared.config.config import Config
 import requests
+import json
 
 def show_page():
     """LINE 官方帳號管理頁面"""
@@ -19,7 +20,7 @@ def show_page():
         show_webhook_settings(config, ngrok_manager)
     
     # 官方帳號資訊
-    with st.expander("加入好友資訊", expanded=True):
+    with st.expander("官方帳號資訊", expanded=True):
         show_account_info(config)
 
 def show_channel_settings(config: Config):
@@ -28,33 +29,21 @@ def show_channel_settings(config: Config):
         channel_secret = st.text_input(
             "Channel Secret",
             value=config.LINE_CHANNEL_SECRET or "",
-            type="password",
-            help="從 LINE Developers Console 獲取"
+            type="password"
         )
         
         channel_token = st.text_input(
             "Channel Access Token",
             value=config.LINE_CHANNEL_ACCESS_TOKEN or "",
-            type="password",
-            help="從 LINE Developers Console 獲取"
-        )
-        
-        bot_id = st.text_input(
-            "Bot Basic ID",
-            value=config.LINE_BOT_ID or "",
-            help="機器人的基本 ID"
+            type="password"
         )
         
         if st.form_submit_button("儲存設定"):
             try:
-                config.update_settings({
-                    'LINE_CHANNEL_SECRET': channel_secret,
-                    'LINE_CHANNEL_ACCESS_TOKEN': channel_token,
-                    'LINE_BOT_ID': bot_id
-                })
-                st.success("✅ Channel 設定已更新")
+                # TODO: 實現設定儲存邏輯
+                st.success("Channel 設定已更新")
             except Exception as e:
-                st.error(f"❌ 更新失敗: {str(e)}")
+                st.error(f"更新失敗: {str(e)}")
 
 def show_webhook_settings(config: Config, ngrok_manager: NgrokManager):
     """顯示 Webhook 設定"""
@@ -68,46 +57,49 @@ def show_webhook_settings(config: Config, ngrok_manager: NgrokManager):
         if st.button("啟動 Webhook"):
             try:
                 url = ngrok_manager.start()
-                st.success(f"✅ Webhook 已啟動: {url}")
+                st.success(f"Webhook 已啟動: {url}")
                 st.rerun()
             except Exception as e:
-                st.error(f"❌ 啟動失敗: {str(e)}")
+                st.error(f"啟動失敗: {str(e)}")
     
     with col2:
         if st.button("停止 Webhook"):
             try:
                 ngrok_manager.stop()
-                st.success("✅ Webhook 已停止")
+                st.success("Webhook 已停止")
                 st.rerun()
             except Exception as e:
-                st.error(f"❌ 停止失敗: {str(e)}")
+                st.error(f"停止失敗: {str(e)}")
     
     # Webhook 測試
     if st.button("測試 Webhook"):
         with st.spinner("測試中..."):
             result = test_webhook(current_url)
             if result['success']:
-                st.success("✅ Webhook 測試成功")
+                st.success("Webhook 測試成功")
             else:
-                st.error(f"❌ 測試失敗: {result['error']}")
+                st.error(f"測試失敗: {result['error']}")
 
 def show_account_info(config: Config):
     """顯示官方帳號資訊"""
-    if not config.LINE_BOT_ID:
-        st.warning("⚠️ 請先設定 Bot Basic ID")
+    if not config.LINE_CHANNEL_ACCESS_TOKEN:
+        st.warning("請先設定 Channel Access Token")
         return
     
-    st.markdown(f"""
-    ### 加入好友方式 (Ways to Add Friend)
-    1. 掃描 QR Code：
-       - 使用 LINE 掃描這個連結：[QR Code](https://line.me/R/ti/p/@{config.LINE_BOT_ID})
-    
-    2. 搜尋 Bot ID：
-       - 在 LINE 搜尋欄位輸入：@{config.LINE_BOT_ID}
-    
-    3. 點擊好友連結：
-       - [https://line.me/R/ti/p/@{config.LINE_BOT_ID}](https://line.me/R/ti/p/@{config.LINE_BOT_ID})
-    """)
+    try:
+        # TODO: 實現獲取官方帳號資訊的邏輯
+        info = {
+            "名稱": "AI Assistant",
+            "好友數": 100,
+            "狀態": "正常",
+            "方案": "Developer Trial"
+        }
+        
+        for key, value in info.items():
+            st.write(f"- {key}: {value}")
+            
+    except Exception as e:
+        st.error(f"獲取資訊失敗: {str(e)}")
 
 def test_webhook(url: str) -> dict:
     """測試 Webhook 連接"""

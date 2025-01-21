@@ -4,7 +4,6 @@ import google.generativeai as genai
 from openai import OpenAI
 from anthropic import Anthropic
 from shared.config.config import Config
-from shared.utils.role_manager import RoleManager
 
 logger = logging.getLogger(__name__)
 
@@ -12,34 +11,30 @@ class ChatTester:
     """獨立的對話測試類，不依賴 LINE 或用戶系統"""
     
     def __init__(self):
-        self.config = Config()  # 創建 Config 實例
-        self.role_manager = RoleManager()
+        # 初始化 AI 模型客戶端
         self.setup_ai_clients()
         self.chat_history = []  # 添加對話歷史記錄
     
     def setup_ai_clients(self):
         """設置 AI 模型客戶端"""
         try:
-            if self.config.GOOGLE_API_KEY:
-                genai.configure(api_key=self.config.GOOGLE_API_KEY)
-                self.gemini = genai.GenerativeModel('gemini-pro')
-            else:
-                self.gemini = None
-                logger.warning("未設定 Google API Key")
+            if Config.GOOGLE_API_KEY:
+                import google.generativeai as genai
+                genai.configure(api_key=Config.GOOGLE_API_KEY)
         except ImportError:
             logger.warning("Google AI 套件未安裝")
         
         try:
-            if self.config.OPENAI_API_KEY:
+            if Config.OPENAI_API_KEY:
                 from openai import OpenAI
-                self.openai_client = OpenAI(api_key=self.config.OPENAI_API_KEY)
+                self.openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
         except ImportError:
             logger.warning("OpenAI 套件未安裝")
         
         try:
-            if self.config.CLAUDE_API_KEY:
+            if Config.CLAUDE_API_KEY:
                 from anthropic import Anthropic
-                self.anthropic_client = Anthropic(api_key=self.config.CLAUDE_API_KEY)
+                self.anthropic_client = Anthropic(api_key=Config.CLAUDE_API_KEY)
         except ImportError:
             logger.warning("Anthropic 套件未安裝")
     
