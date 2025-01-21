@@ -19,6 +19,7 @@ from shared.config.config import Config
 from shared.ai.chat_tester import ChatTester
 from shared.utils.file_processor import FileProcessor
 from shared.ai.model_manager import ModelManager
+from shared.database.document_crud import DocumentCRUD
 
 # 設置 logger
 logger = logging.getLogger(__name__)
@@ -994,48 +995,181 @@ def show_plugins_management():
            - 數據同步
         """)
 
+def show_knowledge_base_management():
+    st.header("知識庫管理 (Knowledge Base Management)")
+    
+    # 文件上傳區域
+    st.subheader("文件上傳 (Document Upload)")
+    uploaded_file = st.file_uploader(
+        "上傳文件 (Upload Document)", 
+        type=['txt', 'pdf', 'doc', 'docx', 'xls', 'xlsx'],
+        help="支援的格式：TXT、PDF、Word、Excel"
+    )
+    
+    if uploaded_file:
+        with st.form("document_form"):
+            title = st.text_input(
+                "文件標題 (Document Title)",
+                value=uploaded_file.name
+            )
+            description = st.text_area(
+                "文件描述 (Description)",
+                help="簡短描述文件的內容和用途"
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                auto_chunk = st.checkbox(
+                    "自動分段",
+                    value=True,
+                    help="自動將文件分割成小段落以優化搜索效果"
+                )
+            with col2:
+                if auto_chunk:
+                    chunk_size = st.number_input(
+                        "分段大小",
+                        min_value=100,
+                        max_value=1000,
+                        value=500,
+                        help="每個段落的最大字符數"
+                    )
+            
+            if st.form_submit_button("上傳"):
+                try:
+                    # 使用 DocumentCRUD 處理文件上傳
+                    doc_crud = DocumentCRUD()
+                    document = doc_crud.create_document(
+                        title=title,
+                        content="",  # 稍後由 FileProcessor 填充
+                        file_type=uploaded_file.type,
+                        file_size=uploaded_file.size
+                    )
+                    st.success("✅ 文件上傳成功！正在處理文件內容...")
+                    
+                    # 處理文件內容
+                    file_processor = FileProcessor()
+                    result = file_processor.process_file(uploaded_file)
+                    
+                    if result['success']:
+                        # 更新文件內容
+                        document.content = result['content']['text']
+                        doc_crud.db.commit()
+                        st.success("✅ 文件處理完成！")
+                    else:
+                        st.error(f"❌ 文件處理失敗：{result.get('error', '未知錯誤')}")
+                        
+                except Exception as e:
+                    st.error(f"❌ 上傳失敗：{str(e)}")
+    
+    # 文件列表
+    st.subheader("文件列表 (Document List)")
+    doc_crud = DocumentCRUD()
+    documents = doc_crud.get_all_documents()
+    
+    if not documents:
+        st.info("📝 目前沒有任何文件")
+    else:
+        for doc in documents:
+            with st.expander(f"{doc.title} ({doc.file_type})", expanded=False):
+                col1, col2, col3 = st.columns([2,2,1])
+                with col1:
+                    st.write(f"上傳時間：{doc.created_at.strftime('%Y-%m-%d %H:%M')}")
+                    st.write(f"處理狀態：{doc.embedding_status}")
+                with col2:
+                    st.write(f"檔案大小：{doc.file_size/1024:.1f} KB")
+                    chunks = doc_crud.get_document_chunks(doc.id)
+                    st.write(f"分段數量：{len(chunks)}")
+                with col3:
+                    if st.button("刪除", key=f"del_{doc.id}"):
+                        if doc_crud.delete_document(doc.id):
+                            st.success("✅ 文件已刪除")
+                            st.experimental_rerun()
+                        else:
+                            st.error("❌ 刪除失敗")
+
 def main():
+    # 基本頁面配置
     st.set_page_config(
         page_title="Line AI Assistant - 管理介面",
         page_icon="🤖",
-        layout="wide"
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
     
-    st.title("Line AI Assistant 管理介面")
+    # 自定義 CSS - 特別處理導航欄
+    hide_streamlit_style = """
+        <style>
+            /* 隱藏所有自動產生的元素 */
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+            footer {visibility: hidden;}
+            
+            /* 隱藏 Streamlit 默認的導航欄 */
+            [data-testid="stSidebarNav"] {display: none !important;}
+            .css-1d391kg {display: none !important;}
+            .css-163ttbj {display: none !important;}
+            
+            /* 側邊欄樣式 */
+            section[data-testid="stSidebar"] {
+                background-color: rgb(14, 17, 23);
+                width: 250px !important;
+                min-width: 250px !important;
+            }
+            
+            /* 確保側邊欄內容在最上層 */
+            section[data-testid="stSidebar"] > div {
+                height: 100vh;
+                z-index: 999999 !important;
+                background-color: rgb(14, 17, 23);
+            }
+            
+            /* 調整內容區域 */
+            .block-container {
+                padding-top: 1rem;
+                max-width: none;
+            }
+            
+            /* 美化 radio 按鈕 */
+            .stRadio > label {
+                display: none;
+            }
+            
+            .stRadio > div {
+                padding: 0.5rem;
+                border-radius: 4px;
+            }
+            
+            .stRadio > div:hover {
+                background-color: rgba(151, 166, 195, 0.15);
+            }
+        </style>
+    """
+    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
     
+    # 初始化 RoleManager
     role_manager = RoleManager()
     
-    # 側邊欄選單
-    st.sidebar.title("功能選單 (Menu)")
-    menu = st.sidebar.selectbox(
-        "選擇功能 (Select Function)",
-        ["系統狀態 (System Status)", 
-         "AI 模型設定 (AI Model Settings)", 
-         "LINE 官方帳號管理 (LINE Official Account)",
-         "對話測試 (Chat Test)",
-         "共用 Prompts 管理 (Shared Prompts)",
-         "角色管理 (Role Management)",
-         "插件功能列表 (Plugin Features)",
-         "文件管理 (Document Management)"]
-    )
+    # 使用 sidebar 組件
+    from admin.components.sidebar import show_sidebar
+    menu = show_sidebar()
     
-    if "系統狀態" in menu:
+    # 根據選單選項顯示對應頁面
+    if menu == "系統狀態":
         show_system_status()
-    elif "AI 模型設定" in menu:
+    elif menu == "AI 模型設定":
         show_api_settings()
-    elif "LINE 官方帳號管理" in menu:
+    elif menu == "LINE 官方帳號":
         show_line_account_management()
-    elif "對話測試" in menu:
+    elif menu == "對話測試":
         asyncio.run(show_chat_test())
-    elif "共用 Prompts 管理" in menu:
+    elif menu == "共用 Prompts":
         show_prompts_management(role_manager)
-    elif "角色管理" in menu:
+    elif menu == "角色管理":
         show_role_management(role_manager)
-    elif "插件功能列表" in menu:
+    elif menu == "插件功能":
         show_plugins_management()
-    elif "文件管理" in menu:
-        st.header("文件管理 (Document Management)")
-        st.info("📝 文件管理功能開發中...")
+    elif menu == "知識庫管理":
+        show_knowledge_base_management()
 
 if __name__ == "__main__":
     main() 

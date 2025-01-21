@@ -11,9 +11,10 @@ def show_sidebar() -> str:
         else:
             st.title("Line AI Assistant")
         
-        menu = st.selectbox(
-            "選擇功能 (Select Function)",
-            [
+        # 使用 radio 代替 selectbox，並添加 label
+        menu = st.radio(
+            label="功能選單",  # 添加 label 解決警告
+            options=[
                 "系統狀態 (System Status)", 
                 "AI 模型設定 (AI Model Settings)", 
                 "LINE 官方帳號 (LINE Official Account)",
@@ -22,7 +23,8 @@ def show_sidebar() -> str:
                 "角色管理 (Role Management)",
                 "插件功能 (Plugin Features)",
                 "知識庫管理 (Knowledge Base)"
-            ]
+            ],
+            label_visibility="collapsed"  # 隱藏 label 但保持可訪問性
         )
         
         # 返回中文選單名稱
