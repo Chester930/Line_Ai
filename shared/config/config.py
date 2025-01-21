@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from pathlib import Path
 import requests
 
@@ -13,7 +13,8 @@ class Config:
     def __init__(self):
         # 加載 .env 文件
         env_path = Path(__file__).parent.parent.parent / '.env'
-        load_dotenv(env_path)
+        if env_path.exists():
+            load_dotenv(env_path)
         
         # API Keys
         self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
@@ -42,7 +43,7 @@ class Config:
         self.CLAUDE_ENABLED_MODELS = os.getenv('CLAUDE_ENABLED_MODELS', '').split(',')
         
         # 預設模型
-        self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gemini-2.0-flash-exp')
+        self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gemini-pro')
         
         # LINE Bot Settings
         self.LINE_BOT_ID = os.getenv('LINE_BOT_ID')
@@ -191,6 +192,28 @@ class Config:
         if cls.ANTHROPIC_API_KEY:
             models.extend(cls.CLAUDE_ENABLED_MODELS)
         return models
+
+    def update_config(self, updates: dict):
+        """更新設定"""
+        env_path = Path(__file__).parent.parent.parent / '.env'
+        
+        # 讀取當前設定
+        if env_path.exists():
+            current_env = dotenv_values(env_path)
+        else:
+            current_env = {}
+        
+        # 更新設定
+        current_env.update(updates)
+        
+        # 寫入文件
+        with open(env_path, 'w', encoding='utf-8') as f:
+            for key, value in current_env.items():
+                f.write(f"{key}={value}\n")
+        
+        # 更新實例屬性
+        for key, value in updates.items():
+            setattr(self, key, value)
 
 class DevelopmentConfig(Config):
     """開發環境配置"""

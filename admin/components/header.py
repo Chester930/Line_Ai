@@ -3,14 +3,17 @@ import streamlit as st
 def show_header():
     """顯示頁面頭部"""
     
-    # 使用列來創建頭部佈局
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        st.title("Line AI Assistant 管理介面")
-        st.markdown("---")
+    # 使用 columns 來布局
+    col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        # 顯示當前時間或其他狀態資訊
-        st.write("")  # 空行用於對齊
-        st.caption("管理員模式")
+        # 標題和版本資訊
+        st.markdown("""
+            <div style="text-align: center;">
+                <h1 style="color: #ffffff;">Line AI Assistant</h1>
+                <p style="color: #9BA4B5;">管理介面 v1.0.0</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # 分隔線
+    st.divider()

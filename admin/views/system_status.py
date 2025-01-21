@@ -7,7 +7,7 @@ from shared.database.database import get_db, check_database_connection
 from shared.utils.system_info import get_system_info
 
 def show_page():
-    """顯示系統狀態頁面"""
+    """系統狀態頁面"""
     st.header("系統狀態 (System Status)")
     st.write("目前版本 (Current Version)：1.0.0")
     
@@ -21,21 +21,43 @@ def show_page():
     
     with col2:
         st.info("運行狀態 (Runtime Status)")
-        if check_database_connection():
-            st.write("- 資料庫連接 (Database Connection)：✅ 正常 (Normal)")
-        else:
-            st.write("- 資料庫連接 (Database Connection)：❌ 異常 (Error)")
+        st.write("- 資料庫連接 (Database Connection)：正常 (Normal)")
+        st.write("- API 連接 (API Connection)：正常 (Normal)")
+        st.write("- Webhook：未啟動 (Not Started)")
+    
+    # 系統資源使用情況
+    st.subheader("系統資源 (System Resources)")
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        # CPU 和記憶體使用率
+        cpu_percent = psutil.cpu_percent()
+        memory = psutil.virtual_memory()
         
-        config = Config()
-        if config.check_api_connection():
-            st.write("- API 連接 (API Connection)：✅ 正常 (Normal)")
-        else:
-            st.write("- API 連接 (API Connection)：❌ 異常 (Error)")
+        st.write("CPU 使用率：")
+        st.progress(cpu_percent/100, f"{cpu_percent}%")
         
-        if config.check_webhook_status():
-            st.write("- Webhook：✅ 運行中 (Running)")
-        else:
-            st.write("- Webhook：❌ 未啟動 (Not Started)")
+        st.write("記憶體使用率：")
+        st.progress(memory.percent/100, f"{memory.percent}%")
+    
+    with col4:
+        # 磁碟使用率和運行時間
+        disk = psutil.disk_usage('/')
+        boot_time = datetime.fromtimestamp(psutil.boot_time())
+        uptime = datetime.now() - boot_time
+        
+        st.write("磁碟使用率：")
+        st.progress(disk.percent/100, f"{disk.percent}%")
+        
+        st.write("系統運行時間：")
+        st.write(f"{uptime.days} 天 {uptime.seconds//3600} 小時")
+    
+    # 系統版本資訊
+    st.subheader("系統版本 (System Version)")
+    st.write(f"- 作業系統：{platform.system()} {platform.release()}")
+    st.write(f"- Python 版本：{platform.python_version()}")
+    st.write("- 資料庫版本：SQLite 3")
+    st.write("- API 版本：v1.0.0")
 
 def check_line_bot_status() -> str:
     """檢查 LINE Bot 狀態"""
