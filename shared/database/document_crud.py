@@ -3,42 +3,68 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from . import models
 from .base import SessionLocal
+from .database import engine, Base
+from .models import Document, DocumentChunk, KnowledgeBase
+import logging
+from sqlalchemy import text
 
 class DocumentCRUD:
     """文件 CRUD 操作"""
     
     def __init__(self):
-        self.db = SessionLocal()
+        try:
+            self.db = SessionLocal()
+        except Exception as e:
+            logger.error(f"Failed to create database session: {str(e)}")
+            raise
+    
+    def _ensure_tables(self):
+        """確保所需的表格存在"""
+        try:
+            # 檢查表是否存在
+            with engine.connect() as conn:
+                # 檢查 knowledge_bases 表
+                result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_bases'"))
+                if not result.scalar():
+                    Base.metadata.create_all(bind=engine)
+                    logging.info("Created database tables")
+        except Exception as e:
+            logging.error(f"Error ensuring tables: {str(e)}")
+            raise
     
     def create_document(
         self,
         title: str,
         content: str,
         file_type: str,
-        file_size: int
-    ) -> models.Document:
+        file_size: float
+    ) -> Document:
         """創建新文件"""
-        document = models.Document(
-            title=title,
-            content=content,
-            file_type=file_type,
-            file_size=file_size,
-            embedding_status="pending",
-            created_at=datetime.utcnow()
-        )
-        self.db.add(document)
-        self.db.commit()
-        self.db.refresh(document)
-        return document
+        try:
+            document = Document(
+                title=title,
+                content=content,
+                file_type=file_type,
+                file_size=file_size,
+                created_at=datetime.utcnow()
+            )
+            self.db.add(document)
+            self.db.commit()
+            self.db.refresh(document)
+            return document
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"創建文件失敗: {str(e)}")
+            raise
     
     def create_document_chunk(
         self,
         document_id: int,
         content: str,
         embedding: List[float]
-    ) -> models.DocumentChunk:
+    ) -> DocumentChunk:
         """創建文件分塊"""
-        chunk = models.DocumentChunk(
+        chunk = DocumentChunk(
             document_id=document_id,
             content=content,
             embedding=embedding,
@@ -49,30 +75,44 @@ class DocumentCRUD:
         self.db.refresh(chunk)
         return chunk
     
-    def get_all_documents(self) -> List[models.Document]:
+    def get_all_documents(self) -> List[Document]:
         """獲取所有文件"""
-        return self.db.query(models.Document)\
-            .order_by(models.Document.created_at.desc())\
-            .all()
+        try:
+            return self.db.query(Document).order_by(Document.created_at.desc()).all()
+        except Exception as e:
+            logger.error(f"獲取文件列表失敗: {str(e)}")
+            raise
     
-    def get_document(self, document_id: int) -> Optional[models.Document]:
-        """獲取特定文件"""
-        return self.db.query(models.Document).get(document_id)
+    def get_document(self, document_id: int) -> Optional[Document]:
+        """獲取指定文件"""
+        return self.db.query(Document).filter(Document.id == document_id).first()
     
     def delete_document(self, document_id: int) -> bool:
-        """刪除文件及其分塊"""
-        document = self.get_document(document_id)
-        if document:
-            self.db.delete(document)
-            self.db.commit()
-            return True
-        return False
+        """刪除文件"""
+        try:
+            document = self.get_document(document_id)
+            if document:
+                self.db.delete(document)
+                self.db.commit()
+                return True
+            return False
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"刪除文件失敗: {str(e)}")
+            return False
     
     def get_document_chunks(
         self,
         document_id: int
-    ) -> List[models.DocumentChunk]:
-        """獲取文件的所有分塊"""
-        return self.db.query(models.DocumentChunk)\
-            .filter_by(document_id=document_id)\
-            .all() 
+    ) -> List[DocumentChunk]:
+        """獲取文件的所有分段"""
+        return self.db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id
+        ).order_by(DocumentChunk.chunk_index).all()
+    
+    def __del__(self):
+        """關閉資料庫連接"""
+        try:
+            self.db.close()
+        except Exception as e:
+            logger.error(f"關閉資料庫連接失敗: {str(e)}") 

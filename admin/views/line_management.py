@@ -3,6 +3,7 @@ from shared.utils.ngrok_manager import NgrokManager
 from shared.config.config import Config
 import requests
 import json
+import time
 
 def test_webhook_url(url: str) -> bool:
     """測試 Webhook URL 是否可訪問"""
@@ -14,73 +15,139 @@ def test_webhook_url(url: str) -> bool:
 
 def show_page():
     """顯示 LINE 官方帳號管理頁面"""
-    st.header("LINE 官方帳號設定")
+    st.header("LINE 官方帳號管理 (LINE Official Account Management)")
     
-    config = Config()
-    ngrok = NgrokManager()
-    
-    # LINE Channel 設定
-    with st.expander("Channel 設定", expanded=True):
-        with st.form("line_channel_settings"):
-            channel_id = st.text_input(
-                "Channel ID",
-                value=config.get("line.channel_id", ""),
-                type="password"
-            )
-            
+    # LINE API 設定
+    with st.expander("API 設定 (API Settings)", expanded=True):
+        st.markdown("""
+        ### LINE 官方帳號設定步驟 (LINE Official Account Setup Steps)
+        1. 前往 LINE Developers Console (Go to LINE Developers Console)
+           [LINE Developers Console](https://developers.line.biz/console/)
+        2. 建立或選擇一個 Provider (Create or select a Provider)
+        3. 建立一個 Messaging API Channel (Create a Messaging API Channel)
+        4. 在 Basic Settings 中可以找到 (In Basic Settings, you can find)：
+           - Channel Secret (頻道密鑰)
+        5. 在 Messaging API 設定中可以找到 (In Messaging API settings, you can find)：
+           - Channel Access Token (頻道存取權杖)
+           - Bot Basic ID (機器人 ID)
+        """)
+        
+        # 從配置文件加載當前設定
+        config = Config()
+        current_settings = {
+            'LINE_CHANNEL_SECRET': config.LINE_CHANNEL_SECRET,
+            'LINE_CHANNEL_ACCESS_TOKEN': config.LINE_CHANNEL_ACCESS_TOKEN,
+            'LINE_BOT_ID': config.LINE_BOT_ID
+        }
+        
+        with st.form("line_settings"):
             channel_secret = st.text_input(
                 "Channel Secret",
-                value=config.get("line.channel_secret", ""),
+                value=current_settings['LINE_CHANNEL_SECRET'],
                 type="password"
             )
-            
-            access_token = st.text_input(
+            channel_token = st.text_input(
                 "Channel Access Token",
-                value=config.get("line.access_token", ""),
+                value=current_settings['LINE_CHANNEL_ACCESS_TOKEN'],
                 type="password"
+            )
+            bot_id = st.text_input(
+                "Bot ID",
+                value=current_settings['LINE_BOT_ID']
             )
             
             if st.form_submit_button("保存設定"):
                 try:
-                    config.update({
-                        "line.channel_id": channel_id,
-                        "line.channel_secret": channel_secret,
-                        "line.access_token": access_token
+                    update_env_file({
+                        'LINE_CHANNEL_SECRET': channel_secret,
+                        'LINE_CHANNEL_ACCESS_TOKEN': channel_token,
+                        'LINE_BOT_ID': bot_id
                     })
-                    st.success("✅ LINE Channel 設定已更新")
+                    st.success("設定已更新，請重新啟動服務以套用更改")
                 except Exception as e:
-                    st.error(f"❌ 保存失敗：{str(e)}")
+                    st.error(f"保存設定失敗：{str(e)}")
     
-    # Webhook 設定
-    with st.expander("Webhook 設定", expanded=True):
-        st.write("**目前狀態**")
+    # Webhook 狀態顯示
+    with st.expander("Webhook 狀態 (Webhook Status)", expanded=True):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("""
+            ### Webhook 設定說明 (Webhook Setup Instructions)
+            1. 確保 LINE Bot 服務正在運行 (Ensure LINE Bot service is running)：
+               ```bash
+               python run.py --mode bot
+               ```
+            2. 複製下方的 Webhook URL (Copy the Webhook URL below)
+            3. 前往 LINE Developers Console (Go to LINE Developers Console)
+            4. 在 Messaging API 設定中 (In Messaging API settings)：
+               - 貼上 Webhook URL (Paste the Webhook URL)
+               - 開啟「Use webhook」選項 (Enable "Use webhook" option)
+               - 點擊「Verify」按鈕測試連接 (Click "Verify" button to test connection)
+            """)
         
-        if ngrok.is_running():
-            webhook_url = ngrok.get_public_url()
-            st.success(f"✅ Webhook 運行中：{webhook_url}")
-            
-            if test_webhook_url(webhook_url):
-                st.info("✅ Webhook URL 可正常訪問")
+        with col2:
+            st.markdown("### 服務狀態 (Service Status)")
+            if check_line_bot_service():
+                st.success("✅ 服務運行中 (Service Running)")
             else:
-                st.warning("⚠️ Webhook URL 無法訪問")
+                st.error("❌ 服務未運行 (Service Not Running)")
+        
+        # 顯示當前 Webhook URL
+        st.subheader("當前 Webhook URL")
+        webhook_url = get_webhook_url()
+        if webhook_url:
+            webhook_full_url = f"{webhook_url}/callback"
+            st.code(webhook_full_url, language=None)
             
-            if st.button("停止 Webhook"):
-                try:
-                    ngrok.stop()
-                    st.success("✅ Webhook 已停止")
-                    st.experimental_rerun()
-                except Exception as e:
-                    st.error(f"❌ 停止失敗：{str(e)}")
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                if st.button("複製 URL"):
+                    st.write("URL 已複製到剪貼簿")
+                    st.markdown(f"""
+                    <script>
+                        navigator.clipboard.writeText('{webhook_full_url}');
+                    </script>
+                    """, unsafe_allow_html=True)
+            with col2:
+                st.info("👆 請複製此 URL 到 LINE Developers Console 的 Webhook URL 欄位")
         else:
-            st.warning("⚠️ Webhook 未運行")
-            
-            if st.button("啟動 Webhook"):
-                try:
-                    ngrok.start()
-                    st.success("✅ Webhook 已啟動")
-                    st.experimental_rerun()
-                except Exception as e:
-                    st.error(f"❌ 啟動失敗：{str(e)}")
+            st.warning("⚠️ 無法獲取 Webhook URL")
+    
+    # 機器人資訊
+    if bot_id:
+        with st.expander("加入好友資訊 (Add Friend Information)", expanded=True):
+            st.markdown(f"""
+            ### 加入好友方式 (Ways to Add Friend)
+            1. 掃描 QR Code (Scan QR Code)：
+               - 使用 LINE 掃描這個連結 (Use LINE to scan this link)：
+                 [QR Code](https://line.me/R/ti/p/@{bot_id})
+            2. 搜尋 Bot ID (Search Bot ID)：
+               - 在 LINE 搜尋欄位輸入 (Enter in LINE search field)：@{bot_id}
+            3. 點擊好友連結 (Click Friend Link)：
+               - [https://line.me/R/ti/p/@{bot_id}](https://line.me/R/ti/p/@{bot_id})
+            """)
+
+def check_line_bot_service():
+    """檢查 LINE Bot 服務狀態"""
+    max_retries = 3
+    timeout = 3  # 增加超時時間到 3 秒
+    
+    for i in range(max_retries):
+        try:
+            response = requests.get("http://127.0.0.1:5000/status", timeout=timeout)
+            if response.status_code == 200:
+                return True
+            time.sleep(1)
+        except requests.exceptions.RequestException:
+            if i < max_retries - 1:
+                time.sleep(1)
+                continue
+    return False
+
+def get_webhook_url():
+    """獲取 Webhook URL"""
+    ngrok = NgrokManager()
+    return ngrok.get_public_url()
 
 def show_channel_settings(config: Config):
     """顯示 Channel 設定"""

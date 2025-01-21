@@ -120,14 +120,15 @@ def show_role_management(role_manager):
             if en_category == "mbti":
                 # MBTI 性格使用單選
                 st.write(f"選擇 {zh_category}：")
-                prompt_options = ["預設 (Default)"] + [
+                mbti_options = ["預設 (Default)"] + [
                     f"{k} - {v['description']}"
                     for k, v in category_prompts.items()
+                    if v.get('type') == "MBTI"
                 ]
                 
                 selected = st.selectbox(
                     "選擇 MBTI 性格類型",
-                    options=prompt_options,
+                    options=mbti_options,
                     key=f"select_{en_category}"
                 )
                 
@@ -138,14 +139,15 @@ def show_role_management(role_manager):
             elif en_category == "personality":
                 # 進階性格使用多選
                 st.write(f"選擇{zh_category}（可複選）：")
-                prompt_options = [
+                personality_options = [
                     f"{k} - {v['description']}"
                     for k, v in category_prompts.items()
+                    if v.get('type') == "Personality"
                 ]
                 
                 selected_traits = st.multiselect(
                     "選擇進階性格特徵",
-                    options=prompt_options,
+                    options=personality_options,
                     key=f"select_{en_category}"
                 )
                 

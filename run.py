@@ -96,12 +96,13 @@ def main():
     args = parser.parse_args()
     
     try:
-        # 檢查並初始化資料庫
-        if not check_database_connection():
-            logger.info("Initializing database...")
-            if not init_db():
-                logger.error("Failed to initialize database")
-                return
+        # 確保資料庫初始化
+        logger.info("正在檢查並初始化資料庫...")
+        if not init_db():
+            logger.error("資料庫初始化失敗，請檢查錯誤日誌")
+            sys.exit(1)
+        
+        logger.info("資料庫初始化成功")
         
         if args.mode == 'bot':
             logger.info("啟動 LINE Bot 服務...")

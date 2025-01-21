@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, JSON, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, JSON, Float, Table
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
@@ -23,71 +23,66 @@ class Role(Base):
     """角色表"""
     __tablename__ = "roles"
     
-    id = Column(String(50), primary_key=True)
-    name = Column(String(100))
+    id = Column(Integer, primary_key=True)
+    role_id = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
     description = Column(Text)
-    system_prompt = Column(Text)
+    knowledge_base_id = Column(Integer, ForeignKey('knowledge_bases.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 關聯
-    knowledge_bases = relationship("RoleKnowledgeBase", back_populates="role")
+    knowledge_base = relationship("KnowledgeBase", back_populates="roles")
 
 class KnowledgeBase(Base):
     """知識庫表"""
     __tablename__ = "knowledge_bases"
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100))
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False, unique=True)
     description = Column(Text)
-    type = Column(String(50))  # local, cloud
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 關聯
-    documents = relationship("Document", back_populates="knowledge_base")
+    documents = relationship("Document", secondary="knowledge_base_documents", back_populates="knowledge_bases")
+    roles = relationship("Role", back_populates="knowledge_base")
     cloud_sources = relationship("CloudSource", back_populates="knowledge_base")
-    roles = relationship("RoleKnowledgeBase", back_populates="knowledge_base")
-
-class RoleKnowledgeBase(Base):
-    """角色與知識庫的關聯表"""
-    __tablename__ = "role_knowledge_bases"
-    
-    role_id = Column(String(50), ForeignKey("roles.id"), primary_key=True)
-    knowledge_base_id = Column(Integer, ForeignKey("knowledge_bases.id"), primary_key=True)
-    weight = Column(Float, default=1.0)  # 知識庫權重
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # 關聯
-    role = relationship("Role", back_populates="knowledge_bases")
-    knowledge_base = relationship("KnowledgeBase", back_populates="roles")
 
 class Document(Base):
     """文件表"""
     __tablename__ = "documents"
     
-    id = Column(Integer, primary_key=True, index=True)
-    knowledge_base_id = Column(Integer, ForeignKey("knowledge_bases.id"))
-    title = Column(String(200))
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255), nullable=False)
     content = Column(Text)
     file_type = Column(String(50))
-    file_size = Column(Integer)
-    embedding_status = Column(String(20), default="pending")  # pending, processing, completed, failed
+    file_size = Column(Float)
+    embedding_status = Column(String(50), default='pending')
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 關聯
-    knowledge_base = relationship("KnowledgeBase", back_populates="documents")
-    chunks = relationship("DocumentChunk", back_populates="document")
+    knowledge_bases = relationship("KnowledgeBase", secondary="knowledge_base_documents", back_populates="documents")
+    chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
+
+# 知識庫與文件的多對多關聯表
+knowledge_base_documents = Table(
+    'knowledge_base_documents',
+    Base.metadata,
+    Column('knowledge_base_id', Integer, ForeignKey('knowledge_bases.id')),
+    Column('document_id', Integer, ForeignKey('documents.id'))
+)
 
 class DocumentChunk(Base):
     """文件分段表"""
     __tablename__ = "document_chunks"
     
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("documents.id"))
+    id = Column(Integer, primary_key=True)
+    document_id = Column(Integer, ForeignKey('documents.id'))
     content = Column(Text)
-    embedding = Column(JSON)  # 存儲向量嵌入
+    embedding = Column(Text)  # 存儲向量embedding的JSON字符串
+    chunk_index = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # 關聯

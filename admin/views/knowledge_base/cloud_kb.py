@@ -1,5 +1,12 @@
 import streamlit as st
 from shared.utils.cloud_manager import CloudServiceManager
+from shared.database.models import CloudSource, KnowledgeBase
+from datetime import datetime
+from shared.database.database import SessionLocal
+from sqlalchemy.orm import Session
+import logging
+
+logger = logging.getLogger(__name__)
 
 def show_cloud_kb():
     """雲端知識庫管理"""
@@ -70,4 +77,119 @@ def show_connected_services():
                 st.write(f"最後同步：{service['last_sync']}")
             with col3:
                 st.button("中斷連接", key=f"disconnect_{service['name']}")
-                st.button("立即同步", key=f"sync_{service['name']}") 
+                st.button("立即同步", key=f"sync_{service['name']}")
+
+def show_cloud_kb_section(kb: KnowledgeBase, db: Session):
+    """顯示雲端來源管理區塊"""
+    try:
+        st.subheader("雲端來源管理")
+        
+        # 添加新的雲端來源
+        with st.form(key=f"add_cloud_source_{kb.id}"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                name = st.text_input("來源名稱", placeholder="例如：公司網站")
+                url = st.text_input("URL", placeholder="https://...")
+            
+            with col2:
+                source_type = st.selectbox(
+                    "來源類型",
+                    options=["webpage", "api", "rss"],
+                    format_func=lambda x: {
+                        "webpage": "網頁",
+                        "api": "API",
+                        "rss": "RSS Feed"
+                    }.get(x, x)
+                )
+                sync_frequency = st.selectbox(
+                    "同步頻率",
+                    options=["hourly", "daily", "weekly"],
+                    format_func=lambda x: {
+                        "hourly": "每小時",
+                        "daily": "每天",
+                        "weekly": "每週"
+                    }.get(x, x)
+                )
+            
+            if st.form_submit_button("添加來源"):
+                if not name or not url:
+                    st.error("請填寫來源名稱和 URL")
+                else:
+                    try:
+                        # 檢查是否已存在相同的來源
+                        existing = db.query(CloudSource).filter(
+                            CloudSource.knowledge_base_id == kb.id,
+                            CloudSource.name == name
+                        ).first()
+                        
+                        if existing:
+                            st.error(f"來源名稱 '{name}' 已存在")
+                        else:
+                            # 創建新的雲端來源
+                            cloud_source = CloudSource(
+                                knowledge_base_id=kb.id,
+                                name=name,
+                                url=url,
+                                type=source_type,
+                                sync_frequency=sync_frequency,
+                                created_at=datetime.utcnow()
+                            )
+                            db.add(cloud_source)
+                            db.commit()
+                            st.success("成功添加雲端來源")
+                            st.rerun()
+                    except Exception as e:
+                        logger.error(f"添加雲端來源失敗: {str(e)}")
+                        st.error("添加雲端來源失敗")
+                        db.rollback()
+        
+        # 顯示現有雲端來源
+        st.markdown("---")
+        st.subheader("現有來源")
+        
+        if not kb.cloud_sources:
+            st.info("尚未添加任何雲端來源")
+        else:
+            for source in kb.cloud_sources:
+                with st.container():
+                    col1, col2, col3 = st.columns([3, 2, 1])
+                    
+                    with col1:
+                        st.write(f"🌐 {source.name}")
+                        st.caption(f"URL: {source.url}")
+                    
+                    with col2:
+                        st.caption(f"類型: {source.type}")
+                        st.caption(f"同步頻率: {source.sync_frequency}")
+                        if source.last_sync:
+                            st.caption(f"上次同步: {source.last_sync.strftime('%Y-%m-%d %H:%M')}")
+                    
+                    with col3:
+                        # 立即同步按鈕
+                        if st.button("同步", key=f"sync_{source.id}"):
+                            with st.spinner("同步中..."):
+                                try:
+                                    # TODO: 實現同步邏輯
+                                    st.success("同步完成")
+                                except Exception as e:
+                                    logger.error(f"同步失敗: {str(e)}")
+                                    st.error("同步失敗")
+                        
+                        # 刪除按鈕
+                        if st.button("刪除", key=f"del_source_{source.id}"):
+                            try:
+                                db.delete(source)
+                                db.commit()
+                                st.success("已刪除雲端來源")
+                                st.rerun()
+                            except Exception as e:
+                                logger.error(f"刪除雲端來源失敗: {str(e)}")
+                                st.error("刪除失敗")
+                                db.rollback()
+                    
+                    st.divider()
+                    
+    except Exception as e:
+        logger.error(f"雲端來源管理錯誤: {str(e)}")
+        st.error("載入雲端來源管理時發生錯誤") 

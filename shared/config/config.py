@@ -17,8 +17,8 @@ class Config:
             load_dotenv(env_path)
         
         # API Keys
-        self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
         self.OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+        self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
         self.ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
         
         # LINE 設定
@@ -32,21 +32,20 @@ class Config:
         self.DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/app.db')
         
         # 模型設定
-        self.MODEL_NAME = os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp')
+        self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gemini-pro')
         self.MODEL_TEMPERATURE = float(os.getenv('MODEL_TEMPERATURE', '0.7'))
-        self.MODEL_TOP_P = float(os.getenv('MODEL_TOP_P', '0.9'))
-        self.MAX_OUTPUT_TOKENS = int(os.getenv('MAX_OUTPUT_TOKENS', '2000'))
+        self.MAX_TOKENS = int(os.getenv('MAX_TOKENS', '1000'))
+        self.TOP_P = float(os.getenv('TOP_P', '0.9'))
+        self.PRESENCE_PENALTY = float(os.getenv('PRESENCE_PENALTY', '0.0'))
+        self.FREQUENCY_PENALTY = float(os.getenv('FREQUENCY_PENALTY', '0.0'))
         
         # 已啟用的模型
         self.GOOGLE_ENABLED_MODELS = os.getenv('GOOGLE_ENABLED_MODELS', '').split(',')
         self.OPENAI_ENABLED_MODELS = os.getenv('OPENAI_ENABLED_MODELS', '').split(',')
         self.CLAUDE_ENABLED_MODELS = os.getenv('CLAUDE_ENABLED_MODELS', '').split(',')
         
-        # 預設模型
-        self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'gemini-pro')
-        
         # LINE Bot Settings
-        self.LINE_BOT_ID = os.getenv('LINE_BOT_ID')
+        self.LINE_BOT_ID = os.getenv('LINE_BOT_ID', '')
         
         # Google API Settings
         self.GOOGLE_ENABLED_MODELS = os.getenv('GOOGLE_ENABLED_MODELS', 'gemini-pro').split(',')

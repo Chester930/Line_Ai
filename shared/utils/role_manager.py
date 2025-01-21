@@ -523,11 +523,20 @@ class RoleManager:
         # 添加預設 prompts
         for category, prompts in self.DEFAULT_PROMPTS.items():
             for prompt_id, data in prompts.items():
-                full_id = f"default_{category}_{prompt_id}"
+                # 為 MBTI 和 Personality 類型設置特殊的 ID
+                if category == "personality":
+                    if data.get('type') == "MBTI":
+                        full_id = f"mbti_{prompt_id}"
+                    else:
+                        full_id = f"personality_{prompt_id}"
+                else:
+                    full_id = f"{category}_{prompt_id}"
+                
                 merged[full_id] = {
                     **data,
                     "category": category,
-                    "usage_count": 0
+                    "usage_count": 0,
+                    "is_default": True
                 }
         
         # 添加自定義 prompts
@@ -790,13 +799,14 @@ class RoleManager:
     def get_prompts_by_category(self, category: str) -> Dict:
         """獲取特定類別的所有 prompts"""
         if category == "mbti":
-            return {k: v for k, v in self.DEFAULT_PROMPTS["personality"].items() 
-                   if v.get('type') == "MBTI"}
+            return {k: v for k, v in self.prompts.items() 
+                   if k.startswith('mbti_') or v.get('type') == "MBTI"}
         elif category == "personality":
-            return {k: v for k, v in self.DEFAULT_PROMPTS["personality"].items() 
-                   if v.get('type') == "Personality"}
+            return {k: v for k, v in self.prompts.items() 
+                   if k.startswith('personality_') or v.get('type') == "Personality"}
         else:
-            return self.DEFAULT_PROMPTS.get(category, {})
+            return {k: v for k, v in self.prompts.items() 
+                   if v.get('category') == category}
     
     def get_available_prompts(self) -> Dict:
         """獲取所有可用的 prompts（包括預設和自定義）"""

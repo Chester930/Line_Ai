@@ -1,4 +1,24 @@
 import streamlit as st
+import logging
+from shared.database.database import init_db
+
+# 設置日誌
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 確保資料庫初始化
+logger.info("正在檢查並初始化資料庫...")
+init_db()
+
+# 必須是第一個 Streamlit 命令，在其他任何導入之前
+st.set_page_config(
+    page_title="AI 助理管理介面",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# 其他導入放在 set_page_config 之後
 from admin.components.header import show_header
 from admin.components.footer import show_footer
 from admin.components.sidebar import show_sidebar
@@ -13,60 +33,46 @@ from admin.views import (
     knowledge_base
 )
 
-# 設定頁面配置（必須在最開始）
-st.set_page_config(
-    page_title="Line AI Assistant - 管理介面",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# 自定義 CSS - 特別處理導航欄
+# 添加自定義 CSS
 st.markdown("""
     <style>
-        /* 隱藏所有自動產生的元素 */
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        
-        /* 隱藏 Streamlit 默認的導航欄 */
-        [data-testid="stSidebarNav"] {display: none !important;}
-        .css-1d391kg {display: none !important;}
-        .css-163ttbj {display: none !important;}
-        
-        /* 側邊欄樣式 */
-        section[data-testid="stSidebar"] {
-            background-color: rgb(14, 17, 23);
-            width: 250px !important;
-            min-width: 250px !important;
-        }
-        
-        /* 確保側邊欄內容在最上層 */
-        section[data-testid="stSidebar"] > div {
-            height: 100vh;
-            z-index: 999999 !important;
-            background-color: rgb(14, 17, 23);
-        }
-        
-        /* 調整內容區域 */
-        .block-container {
-            padding-top: 1rem;
-            max-width: none;
-        }
-        
-        /* 美化 radio 按鈕 */
-        .stRadio > label {
-            display: none;
-        }
-        
-        .stRadio > div {
-            padding: 0.5rem;
-            border-radius: 4px;
-        }
-        
-        .stRadio > div:hover {
-            background-color: rgba(151, 166, 195, 0.15);
-        }
+    /* 側邊欄樣式 */
+    .css-1d391kg {
+        padding-top: 2rem;
+    }
+    
+    /* 隱藏 Streamlit 默認的導航欄和英文列表 */
+    [data-testid="stSidebarNav"] {display: none !important;}
+    .css-163ttbj {display: none !important;}
+    .css-1d391kg {display: none !important;}
+    
+    /* 標題樣式 */
+    .stTitle {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 2rem;
+    }
+    
+    /* 分隔線樣式 */
+    hr {
+        margin: 2rem 0;
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    /* 側邊欄容器樣式 */
+    section[data-testid="stSidebar"] {
+        background-color: rgb(14, 17, 23);
+        width: 250px !important;
+        min-width: 250px !important;
+    }
+    
+    /* 確保側邊欄內容在最上層 */
+    section[data-testid="stSidebar"] > div {
+        height: 100vh;
+        z-index: 999999 !important;
+        background-color: rgb(14, 17, 23);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -100,4 +106,4 @@ def main():
     show_footer()
 
 if __name__ == "__main__":
-    main() 
+    main()
