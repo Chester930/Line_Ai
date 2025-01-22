@@ -103,23 +103,27 @@ class DocumentCRUD(BaseCRUD):
     
     def create_document(
         self,
-        user_id: int,
+        db: Session,
         title: str,
         content: str,
-        file_path: str,
-        file_type: str
+        doc_metadata: dict = None,
+        file_type: str = None,
+        file_path: str = None,
+        knowledge_base_id: int = None
     ) -> models.Document:
         """創建新文件記錄"""
         document = models.Document(
-            user_id=user_id,
             title=title,
             content=content,
-            file_path=file_path,
+            doc_metadata=doc_metadata,
             file_type=file_type,
+            file_path=file_path,
+            knowledge_base_id=knowledge_base_id,
             created_at=datetime.utcnow()
         )
-        self.db.add(document)
-        self.db.commit()
+        db.add(document)
+        db.commit()
+        db.refresh(document)
         return document
     
     def get_user_documents(self, user_id: int) -> List[models.Document]:
@@ -141,3 +145,103 @@ class DocumentCRUD(BaseCRUD):
             self.db.commit()
             return True
         return False
+
+def create_knowledge_base(db: Session, name: str, description: str = None):
+    """創建新的知識庫"""
+    kb = models.KnowledgeBase(
+        name=name,
+        description=description,
+        enabled=True,
+        created_at=datetime.now()
+    )
+    db.add(kb)
+    db.commit()
+    db.refresh(kb)
+    return kb
+
+def get_knowledge_base(db: Session, kb_id: int):
+    """獲取指定ID的知識庫"""
+    return db.query(models.KnowledgeBase).filter(models.KnowledgeBase.id == kb_id).first()
+
+def get_knowledge_bases(db: Session, skip: int = 0, limit: int = 100):
+    """獲取所有知識庫列表"""
+    return db.query(models.KnowledgeBase).offset(skip).limit(limit).all()
+
+def update_knowledge_base(db: Session, kb_id: int, name: str = None, description: str = None, enabled: bool = None):
+    """更新知識庫信息"""
+    kb = get_knowledge_base(db, kb_id)
+    if not kb:
+        return None
+        
+    if name is not None:
+        kb.name = name
+    if description is not None:
+        kb.description = description
+    if enabled is not None:
+        kb.enabled = enabled
+        
+    kb.updated_at = datetime.now()
+    db.commit()
+    db.refresh(kb)
+    return kb
+
+def delete_knowledge_base(db: Session, kb_id: int):
+    """刪除知識庫"""
+    kb = get_knowledge_base(db, kb_id)
+    if not kb:
+        return False
+    db.delete(kb)
+    db.commit()
+    return True
+
+# Document CRUD operations
+def create_document(db: Session, title: str, content: str, knowledge_base_id: int, 
+                   file_type: str = None, file_path: str = None, doc_metadata: dict = None):
+    """創建新文檔"""
+    doc = models.Document(
+        title=title,
+        content=content,
+        knowledge_base_id=knowledge_base_id,
+        file_type=file_type,
+        file_path=file_path,
+        doc_metadata=doc_metadata,
+        created_at=datetime.now()
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+def get_document(db: Session, doc_id: int):
+    """獲取指定ID的文檔"""
+    return db.query(models.Document).filter(models.Document.id == doc_id).first()
+
+def get_documents_by_knowledge_base(db: Session, kb_id: int, skip: int = 0, limit: int = 100):
+    """獲取指定知識庫下的所有文檔"""
+    return db.query(models.Document).filter(
+        models.Document.knowledge_base_id == kb_id
+    ).offset(skip).limit(limit).all()
+
+def update_document(db: Session, doc_id: int, **kwargs):
+    """更新文檔信息"""
+    doc = get_document(db, doc_id)
+    if not doc:
+        return None
+        
+    for key, value in kwargs.items():
+        if hasattr(doc, key):
+            setattr(doc, key, value)
+    
+    doc.updated_at = datetime.now()
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+def delete_document(db: Session, doc_id: int):
+    """刪除文檔"""
+    doc = get_document(db, doc_id)
+    if not doc:
+        return False
+    db.delete(doc)
+    db.commit()
+    return True

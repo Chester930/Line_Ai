@@ -4,8 +4,12 @@ from sqlalchemy.exc import SQLAlchemyError
 import logging
 from sqlalchemy import text
 from .base import Base, engine, SessionLocal, get_db
+import os
 
 logger = logging.getLogger(__name__)
+
+# 添加資料庫初始化標記
+_DB_INITIALIZED = False
 
 def check_database_connection() -> bool:
     """檢查資料庫連接狀態"""
@@ -23,63 +27,29 @@ def check_database_connection() -> bool:
 
 def init_db():
     """初始化資料庫"""
+    global _DB_INITIALIZED
+    
+    # 如果已經初始化過，直接返回
+    if _DB_INITIALIZED:
+        return True
+        
     try:
-        # 檢查資料庫連接
-        if not check_database_connection():
-            logger.error("Cannot connect to database")
-            return False
+        # 檢查資料庫文件是否存在
+        db_path = "database/app.db"
+        if not os.path.exists(db_path):
+            # 確保目錄存在
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
             
-        # 檢查表格是否已存在
-        with engine.connect() as conn:
-            tables = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
-            existing_tables = [row[0] for row in tables]
-            
-            required_tables = [
-                'knowledge_bases', 'documents', 'document_chunks',
-                'cloud_sources', 'knowledge_base_documents'
-            ]
-            
-            # 如果所有必需的表格都存在，直接返回成功
-            if all(table in existing_tables for table in required_tables):
-                logger.info("All required tables already exist")
-                return True
-        
-        # 導入所有模型
-        from .models import (
-            User, Role, KnowledgeBase, Document, DocumentChunk,
-            CloudSource, Conversation, Message, UserSetting,
-            CloudService, CloudDocument, knowledge_base_documents
-        )
-        
-        # 創建缺失的表格
-        logger.info("Creating missing database tables...")
-        try:
+            # 創建資料庫表
+            logger.info("Creating database tables...")
             Base.metadata.create_all(bind=engine)
             logger.info("Tables created successfully")
-        except Exception as e:
-            logger.error(f"Error creating tables: {str(e)}")
-            return False
-            
-        # 驗證表格是否創建成功
-        with engine.connect() as conn:
-            tables = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
-            existing_tables = [row[0] for row in tables]
-            logger.info(f"Existing tables: {existing_tables}")
-            
-            missing_tables = [table for table in required_tables if table not in existing_tables]
-            
-            if missing_tables:
-                logger.error(f"Missing tables after creation: {missing_tables}")
-                return False
-                
+        
+        _DB_INITIALIZED = True
         return True
             
     except Exception as e:
         logger.error(f"Database initialization failed: {str(e)}")
-        if "permission" in str(e).lower():
-            logger.error("Database permission error. Please check file permissions.")
-        elif "locked" in str(e).lower():
-            logger.error("Database is locked. Please ensure no other process is using it.")
         return False
 
 def close_db():

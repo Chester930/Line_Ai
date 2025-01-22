@@ -1,7 +1,7 @@
 import os
 import tempfile
 import asyncio
-from typing import List, Dict, Optional, Tuple, Union, Any
+from typing import List, Dict, Optional, Tuple, Union, Any, BinaryIO
 import docx
 import pandas as pd
 import PyPDF2
@@ -17,7 +17,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from textblob import TextBlob
-from gensim.summarization import summarize, keywords
 from whoosh.fields import Schema, TEXT, ID, DATETIME, KEYWORD
 from whoosh.analysis import StemmingAnalyzer
 from whoosh import index
@@ -26,11 +25,14 @@ import spacy
 from shared.database.crud import DocumentCRUD
 from shared.database.models import Document
 from shared.ai.media_agent import MediaAgent
+import shutil
+import mimetypes
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 class FileProcessor:
-    def __init__(self, db=None):
+    def __init__(self, db=None, upload_dir: str = 'uploads'):
         self.db = db
         self.temp_dir = tempfile.mkdtemp()
         self.media_agent = MediaAgent()
@@ -71,14 +73,15 @@ class FileProcessor:
         # 初始化結巴分詞的 TF-IDF 關鍵詞提取器
         self.tfidf = analyse.extract_tags
         
+        self.upload_dir = upload_dir
+        os.makedirs(self.upload_dir, exist_ok=True)
+        
+        # 支持的文件類型
         self.supported_types = {
-            'text/plain': self._process_txt,
-            'application/pdf': self._process_pdf,
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': self._process_docx,
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': self._process_excel,
-            'application/json': self._process_json,
-            'text/markdown': self._process_markdown,
-            'text/html': self._process_html
+            'text/plain': self._process_text,
+            'application/pdf': self._process_text,  # 暫時作為文本處理
+            'application/msword': self._process_text,  # 暫時作為文本處理
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': self._process_text
         }
         
         # 定義不同文件類型的處理選項
@@ -223,45 +226,33 @@ class FileProcessor:
         file_type: str,
         save_to_db: bool = False
     ) -> Dict:
-        """非同步處理檔案"""
         try:
-            # 將檔案轉換為 BytesIO 對象
-            if isinstance(file, str):
-                with open(file, 'rb') as f:
-                    file_content = io.BytesIO(f.read())
-            elif isinstance(file, bytes):
-                file_content = io.BytesIO(file)
+            # 讀取文件內容
+            if isinstance(file, (str, bytes)):
+                file_content = file if isinstance(file, bytes) else file.encode('utf-8')
             else:
-                file_content = file
-            
-            # 提取原始內容
-            raw_content = await self._extract_content_async(file_content, file_type)
-            
-            # 清理和格式化內容
-            cleaned_content = self._clean_and_format_content(raw_content['text'])
+                file_content = file.read()
+
+            # 處理文件內容
+            processor = self.supported_types.get(file_type, self._process_text)
+            content = processor(io.BytesIO(file_content))
             
             # 結構化內容
-            structured_content = self._structure_content(cleaned_content, file_type)
+            structured_content = self._structure_content(content, file_type)
             
-            # 分析內容
-            analysis_result = self._analyze_content(cleaned_content)
-            
+            # 準備結果
             result = {
                 'success': True,
-                'content': raw_content['text'],  # 原始內容
-                'processed_content': cleaned_content,  # 處理後的內容
-                'structured_content': structured_content,  # 結構化的內容
-                'metadata': {
-                    'file_type': file_type,
-                    'processed_at': datetime.utcnow().isoformat(),
-                    'analysis': analysis_result,
-                    **structured_content['metadata']
-                }
+                'content': content,
+                'processed_content': '\n'.join(structured_content['chunks']),
+                'metadata': structured_content['metadata'],
+                'file_type': file_type,
+                'file_size': len(file_content)
             }
-            
+
             if save_to_db and self.db:
                 # 計算內容雜湊值
-                content_hash = self._calculate_content_hash(result['processed_content'])
+                content_hash = hashlib.sha256(result['processed_content'].encode('utf-8')).hexdigest()
                 
                 # 檢查是否存在相同內容的文件
                 existing_doc = self.db.query(Document).filter(
@@ -279,14 +270,14 @@ class FileProcessor:
                     if changes['diff_ratio'] < 0.95:  # 如果差異超過5%
                         # 保存新版本
                         file_path = self._save_file(file_content, file_type)
-                        doc = DocumentCRUD.create_document(
-                            self.db,
+                        doc = DocumentCRUD().create_document(
                             title=f"{existing_doc.title}_v{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                             content=result['content'],
                             processed_content=result['processed_content'],
                             file_path=file_path,
                             file_type=file_type,
-                            metadata={
+                            file_size=result['file_size'],
+                            doc_metadata={
                                 **result['metadata'],
                                 'version_info': {
                                     'original_id': existing_doc.id,
@@ -311,14 +302,14 @@ class FileProcessor:
                 else:
                     # 創建新文件
                     file_path = self._save_file(file_content, file_type)
-                    doc = DocumentCRUD.create_document(
-                        self.db,
+                    doc = DocumentCRUD().create_document(
                         title=structured_content['metadata']['titles'][0] if structured_content['metadata']['titles'] else f"uploaded_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                         content=result['content'],
                         processed_content=result['processed_content'],
                         file_path=file_path,
                         file_type=file_type,
-                        metadata=result['metadata'],
+                        file_size=result['file_size'],
+                        doc_metadata=result['metadata'],
                         content_hash=content_hash
                     )
                     result['document_id'] = doc.id
@@ -329,10 +320,13 @@ class FileProcessor:
                 result['similar_documents'] = similar_docs
             
             return result
-                
+            
         except Exception as e:
-            logger.error(f"處理檔案時發生錯誤：{str(e)}")
-            raise ValueError(f"處理檔案時發生錯誤：{str(e)}")
+            logger.error(f"處理文件時發生錯誤: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     async def _extract_content_async(self, file: io.BytesIO, file_type: str) -> Dict:
         """非同步提取檔案內容"""
@@ -407,7 +401,7 @@ class FileProcessor:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         extension = self._get_file_extension(file_type)
         filename = f"{timestamp}{extension}"
-        file_path = os.path.join('data', 'uploads', filename)
+        file_path = os.path.join(self.upload_dir, filename)
         
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
@@ -440,9 +434,24 @@ class FileProcessor:
         except:
             pass
 
-    def _process_txt(self, file: io.BytesIO) -> str:
+    def _process_text(self, file: BinaryIO) -> str:
         """處理文本文件"""
-        return file.read().decode('utf-8')
+        try:
+            content = file.read()
+            # 嘗試不同的編碼
+            encodings = ['utf-8', 'big5', 'gb18030']
+            
+            for encoding in encodings:
+                try:
+                    return content.decode(encoding)
+                except UnicodeDecodeError:
+                    continue
+                    
+            raise ValueError("Unable to decode file with supported encodings")
+            
+        except Exception as e:
+            logger.error(f"Error processing text file: {str(e)}")
+            raise
     
     def _process_pdf(self, file: io.BytesIO) -> str:
         """處理 PDF 文件"""
@@ -466,71 +475,45 @@ class FileProcessor:
     def _analyze_content(self, content: str) -> Dict[str, Any]:
         """分析內容，提取關鍵信息"""
         try:
-            # 基本分析
-            language = detect(content)
+            # 檢測語言
+            lang = detect(content)
             
-            # 使用 TextBlob 進行情感分析
+            # 使用 jieba 提取關鍵詞
+            keywords = self.tfidf(content, topK=10, withWeight=True)
+            keywords = [(word, float(weight)) for word, weight in keywords]
+            
+            # 使用 TextBlob 進行情感分析和摘要
             blob = TextBlob(content)
-            sentiment = blob.sentiment
+            sentiment = blob.sentiment.polarity
             
-            # 使用 gensim 生成摘要和關鍵詞
-            try:
-                auto_summary = summarize(content, ratio=0.3)
-            except:
-                auto_summary = '\n'.join(content.split('\n')[:3])
+            # 簡單的摘要生成（取前三句話）
+            sentences = blob.sentences
+            summary = " ".join(str(sentence) for sentence in sentences[:3])
             
-            try:
-                auto_keywords = keywords(content, ratio=0.1)
-            except:
-                auto_keywords = []
-            
-            # 使用 spaCy 進行命名實體識別
-            entities = []
-            if self.nlp and language == 'zh':
-                doc = self.nlp(content)
-                entities = [
-                    {
-                        'text': ent.text,
-                        'label': ent.label_,
-                        'start': ent.start_char,
-                        'end': ent.end_char
-                    }
-                    for ent in doc.ents
-                ]
-            
-            # 提取中文關鍵詞
-            if language == 'zh':
-                cn_keywords = self.tfidf(content, topK=10, withWeight=True)
-            else:
-                cn_keywords = []
-            
-            # 計算基本統計
-            paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
-            sentences = content.split('。') + content.split('.')
+            # 計算文本統計信息
+            stats = {
+                'total_chars': len(content),
+                'total_words': len(content.split()),
+                'total_sentences': len(sentences),
+                'avg_sentence_length': len(content.split()) / len(sentences) if sentences else 0
+            }
             
             return {
-                'language': language,
-                'sentiment': {
-                    'polarity': sentiment.polarity,
-                    'subjectivity': sentiment.subjectivity
-                },
-                'summary': auto_summary,
-                'keywords': {
-                    'auto': list(auto_keywords),
-                    'chinese': cn_keywords
-                },
-                'entities': entities,
-                'statistics': {
-                    'word_count': len(content.split()),
-                    'char_count': len(content),
-                    'paragraph_count': len(paragraphs),
-                    'sentence_count': len(sentences),
-                    'average_sentence_length': sum(len(s) for s in sentences) / len(sentences) if sentences else 0
-                }
+                'language': lang,
+                'keywords': keywords,
+                'sentiment': sentiment,
+                'summary': summary,
+                'stats': stats
             }
         except Exception as e:
-            logger.warning(f"內容分析時發生錯誤：{str(e)}")
-            return {}
+            logger.error(f"分析內容時發生錯誤：{str(e)}")
+            return {
+                'language': 'unknown',
+                'keywords': [],
+                'sentiment': 0.0,
+                'summary': '',
+                'stats': {}
+            }
 
     def _process_json(self, file: io.BytesIO) -> str:
         """處理 JSON 文件"""

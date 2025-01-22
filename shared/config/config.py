@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv, dotenv_values
 from pathlib import Path
 import requests
+from typing import Any, Optional
 
 # 加載 .env 文件
 env_path = Path(__file__).parent.parent.parent / '.env'
@@ -74,6 +75,22 @@ class Config:
         # 確保必要目錄存在
         for directory in [self.DATA_DIR, self.CONFIG_DIR, self.UPLOAD_DIR, self.LOG_DIR]:
             os.makedirs(directory, exist_ok=True)
+        
+        # 設置基本路徑
+        self.base_path = Path(__file__).parent.parent.parent
+        
+        # 創建必要的目錄
+        self.directories = {
+            'BASE_PATH': self.base_path,
+            'VECTOR_STORE_PATH': self.base_path / 'data' / 'vectors',
+            'JSON_STORE_PATH': self.base_path / 'data' / 'json_store',
+            'TEMP_PATH': self.base_path / 'data' / 'temp',
+            'LOG_PATH': self.base_path / 'data' / 'logs'
+        }
+        
+        # 創建所有必要的目錄
+        for path in self.directories.values():
+            path.mkdir(parents=True, exist_ok=True)
     
     def check_api_connection(self) -> bool:
         """檢查 API 連接狀態"""
@@ -119,9 +136,18 @@ class Config:
         except:
             return False
     
-    def get(self, key: str, default=None):
+    def get(self, key: str, default: Any = None) -> Any:
         """獲取配置值"""
-        return getattr(self, key, default)
+        # 首先檢查目錄配置
+        if key in self.directories:
+            return str(self.directories[key])
+            
+        # 然後檢查環境變數
+        return os.getenv(key, default)
+    
+    def set(self, key: str, value: Any) -> None:
+        """設置配置值"""
+        os.environ[key] = str(value)
     
     def update(self, settings: dict):
         """更新配置"""

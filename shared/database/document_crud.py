@@ -8,6 +8,8 @@ from .models import Document, DocumentChunk, KnowledgeBase
 import logging
 from sqlalchemy import text
 
+logger = logging.getLogger(__name__)
+
 class DocumentCRUD:
     """文件 CRUD 操作"""
     
@@ -36,22 +38,41 @@ class DocumentCRUD:
         self,
         title: str,
         content: str,
-        file_type: str,
-        file_size: float
-    ) -> Document:
+        knowledge_base_id: int,
+        file_type: str = None,
+        file_size: float = None,
+        file_path: str = None,
+        doc_metadata: dict = None,
+        processed_content: str = None,
+        content_hash: str = None
+    ) -> models.Document:
         """創建新文件"""
         try:
-            document = Document(
+            # 檢查知識庫是否存在
+            kb = self.db.query(models.KnowledgeBase).get(knowledge_base_id)
+            if not kb:
+                raise ValueError(f"Knowledge base {knowledge_base_id} not found")
+            
+            document = models.Document(
                 title=title,
                 content=content,
+                processed_content=processed_content,
+                content_hash=content_hash,
                 file_type=file_type,
                 file_size=file_size,
+                file_path=file_path,
+                doc_metadata=doc_metadata,
                 created_at=datetime.utcnow()
             )
+            
+            # 添加到知識庫
+            kb.documents.append(document)
+            
             self.db.add(document)
             self.db.commit()
             self.db.refresh(document)
             return document
+            
         except Exception as e:
             self.db.rollback()
             logger.error(f"創建文件失敗: {str(e)}")

@@ -866,28 +866,26 @@ async def show_chat_test():
     
     if uploaded_file:
         try:
+            # 使用 DocumentCRUD 處理文件上傳
+            doc_crud = DocumentCRUD()
+            
+            # 處理文件內容
             file_processor = FileProcessor()
-            result = file_processor.process_file(uploaded_file, save_to_db=False)
+            result = file_processor.process_file(uploaded_file)
             
             if result['success']:
-                content = result['content']
-                
-                if content['type'] == 'image':
-                    # 使用 Gemini Vision API 進行圖片描述
-                    image_description = model_manager.describe_image(content['image'])
-                    st.write("圖片描述：", image_description)
-                    message = f"這是一張圖片，內容描述如下：\n{image_description}"
-                else:
-                    message = content.get('text', '無法讀取檔案內容')
-                
-                # 添加到對話歷史
-                st.session_state.chat_history.append({"role": "user", "content": message})
-                
-                # 顯示處理結果
-                st.success("檔案處理成功！")
-                
+                # 創建文件記錄
+                document = doc_crud.create_document(
+                    title=uploaded_file.name,
+                    content=result['content'],
+                    processed_content=result['processed_content'],
+                    file_type=uploaded_file.type,
+                    file_size=uploaded_file.size,
+                    doc_metadata=result['metadata']
+                )
+                st.success("✅ 文件處理完成！")
             else:
-                st.error(f"檔案處理失敗：{result.get('error', '未知錯誤')}")
+                st.error(f"❌ 文件處理失敗：{result.get('error', '未知錯誤')}")
                 
         except Exception as e:
             st.error(f"處理檔案時發生錯誤：{str(e)}")
@@ -1040,22 +1038,21 @@ def show_knowledge_base_management():
                 try:
                     # 使用 DocumentCRUD 處理文件上傳
                     doc_crud = DocumentCRUD()
-                    document = doc_crud.create_document(
-                        title=title,
-                        content="",  # 稍後由 FileProcessor 填充
-                        file_type=uploaded_file.type,
-                        file_size=uploaded_file.size
-                    )
-                    st.success("✅ 文件上傳成功！正在處理文件內容...")
                     
                     # 處理文件內容
                     file_processor = FileProcessor()
                     result = file_processor.process_file(uploaded_file)
                     
                     if result['success']:
-                        # 更新文件內容
-                        document.content = result['content']['text']
-                        doc_crud.db.commit()
+                        # 創建文件記錄
+                        document = doc_crud.create_document(
+                            title=title,
+                            content=result['content'],
+                            processed_content=result['processed_content'],
+                            file_type=uploaded_file.type,
+                            file_size=uploaded_file.size,
+                            doc_metadata=result['metadata']
+                        )
                         st.success("✅ 文件處理完成！")
                     else:
                         st.error(f"❌ 文件處理失敗：{result.get('error', '未知錯誤')}")

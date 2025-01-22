@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, JSON, Float, Table
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 from .base import Base
 
@@ -7,15 +7,15 @@ class User(Base):
     """用戶表"""
     __tablename__ = "users"
     
-    id = Column(Integer, primary_key=True, index=True)
-    line_user_id = Column(String(50), unique=True, index=True)
+    id = Column(Integer, primary_key=True)
+    line_user_id = Column(String(50), unique=True)
     display_name = Column(String(100))
     picture_url = Column(String(200))
     status = Column(String(20), default="active")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
-    # 關聯
+    # 關聯到對話
     conversations = relationship("Conversation", back_populates="user")
     setting = relationship("UserSetting", back_populates="user", uselist=False)
 
@@ -40,16 +40,13 @@ class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
     
     id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False, unique=True)
+    name = Column(String(100), nullable=False)
     description = Column(Text)
-    content = Column(Text)  # 知識庫內容
-    source = Column(String(255))  # 來源
-    enabled = Column(Boolean, default=True)  # 是否啟用
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
-    # 關聯
-    documents = relationship("Document", secondary="knowledge_base_documents", back_populates="knowledge_bases")
+    documents = relationship("Document", back_populates="knowledge_base")
     roles = relationship("Role", back_populates="knowledge_base")
     cloud_sources = relationship("CloudSource", back_populates="knowledge_base")
 
@@ -58,24 +55,27 @@ class Document(Base):
     __tablename__ = "documents"
     
     id = Column(Integer, primary_key=True)
-    title = Column(String(255), nullable=False)
-    content = Column(Text)  # 原始內容
-    processed_content = Column(Text)  # 處理後的內容
+    title = Column(String(200), nullable=False)
+    content = Column(Text)
+    processed_content = Column(Text)
+    content_hash = Column(String(64))
+    doc_metadata = Column(JSON)
     file_type = Column(String(50))
-    file_size = Column(Float)
-    file_path = Column(String(255))
-    content_hash = Column(String(64))  # 內容雜湊值
-    embedding_status = Column(String(50), default='pending')
-    metadata = Column(JSON)  # 元數據，包含版本信息
-    parent_id = Column(Integer, ForeignKey('documents.id'))  # 父文件ID（用於版本控制）
-    version = Column(Integer, default=1)  # 版本號
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    file_path = Column(String(500))
+    file_size = Column(Integer)
+    knowledge_base_id = Column(Integer, ForeignKey('knowledge_bases.id'))
+    parent_id = Column(Integer, ForeignKey('documents.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
-    # 關聯
-    knowledge_bases = relationship("KnowledgeBase", secondary="knowledge_base_documents", back_populates="documents")
-    chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
-    parent = relationship("Document", remote_side=[id], backref="versions")  # 版本關係
+    # 關係定義
+    knowledge_base = relationship("KnowledgeBase", back_populates="documents")
+    document_chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
+    parent = relationship(
+        "Document",
+        remote_side=[id],
+        backref=backref("children", cascade="all, delete-orphan")
+    )
 
 # 知識庫與文件的多對多關聯表
 knowledge_base_documents = Table(
@@ -92,12 +92,11 @@ class DocumentChunk(Base):
     id = Column(Integer, primary_key=True)
     document_id = Column(Integer, ForeignKey('documents.id'))
     content = Column(Text)
-    embedding = Column(Text)  # 存儲向量embedding的JSON字符串
+    embedding = Column(Text)
     chunk_index = Column(Integer)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
-    # 關聯
-    document = relationship("Document", back_populates="chunks")
+    document = relationship("Document", back_populates="document_chunks")
 
 class CloudSource(Base):
     """雲端知識來源表"""
@@ -121,14 +120,13 @@ class Conversation(Base):
     """對話表"""
     __tablename__ = "conversations"
     
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    role_id = Column(String(50))  # 對應到 role_manager 中的角色
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
     title = Column(String(200))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    model = Column(String(50))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
-    # 關聯
     user = relationship("User", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")
 
@@ -136,14 +134,12 @@ class Message(Base):
     """消息表"""
     __tablename__ = "messages"
     
-    id = Column(Integer, primary_key=True, index=True)
-    conversation_id = Column(Integer, ForeignKey("conversations.id"))
-    role = Column(String(20))  # user 或 assistant
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey('conversations.id'))
+    role = Column(String(50))  # 'user' or 'assistant'
     content = Column(Text)
-    tokens = Column(Integer)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
-    # 關聯
     conversation = relationship("Conversation", back_populates="messages")
 
 class UserSetting(Base):
