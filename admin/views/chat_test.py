@@ -123,6 +123,61 @@ def show_page():
                                 if prompt_id in available_prompts:
                                     st.write(f"- {available_prompts[prompt_id].get('description', prompt_id)}")
             
+            # 知識庫選擇
+            st.write("**知識庫選擇**")
+            db = SessionLocal()
+            try:
+                # 獲取所有可用的知識庫
+                knowledge_bases = db.query(KnowledgeBase).filter(KnowledgeBase.enabled == True).all()
+                if knowledge_bases:
+                    selected_kb_ids = st.multiselect(
+                        "選擇要使用的知識庫",
+                        options=[kb.id for kb in knowledge_bases],
+                        format_func=lambda x: next((kb.name for kb in knowledge_bases if kb.id == x), x),
+                        help="可以選擇多個知識庫同時使用"
+                    )
+                    
+                    # 顯示已選知識庫的說明
+                    if selected_kb_ids:
+                        st.write("**已選知識庫說明：**")
+                        kb_contents = []
+                        for kb_id in selected_kb_ids:
+                            kb = next((kb for kb in knowledge_bases if kb.id == kb_id), None)
+                            if kb:
+                                with st.expander(f"📚 {kb.name}", expanded=False):
+                                    st.write(f"**描述：** {kb.description}")
+                                    st.write(f"**來源：** {kb.source}")
+                                    st.write(f"**最後更新：** {kb.updated_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                                    
+                                # 收集知識庫內容
+                                if kb.documents:
+                                    for doc in kb.documents:
+                                        kb_contents.append({
+                                            'title': doc.title,
+                                            'content': doc.processed_content or doc.content  # 優先使用處理後的內容
+                                        })
+                        
+                        # 將知識庫內容加入到對話歷史
+                        if kb_contents:
+                            context = "系統已載入以下知識庫內容：\n\n"
+                            for doc in kb_contents:
+                                context += f"- {doc['title']}:\n{doc['content']}\n\n"
+                            
+                            if 'messages' not in st.session_state:
+                                st.session_state.messages = []
+                            
+                            # 檢查是否已經有系統消息
+                            has_system_message = any(msg.get('role') == 'system' for msg in st.session_state.messages)
+                            if not has_system_message:
+                                st.session_state.messages.insert(0, {
+                                    'role': 'system',
+                                    'content': context
+                                })
+                else:
+                    st.warning("⚠️ 尚未建立任何知識庫，請前往「知識庫管理」頁面設定")
+            finally:
+                db.close()
+            
             # 插件選擇
             st.write("**插件功能**")
             available_plugins = {
@@ -255,6 +310,28 @@ def show_page():
                 "role": "system",
                 "content": f"當前時間更新：{current_time.strftime('%Y年%m月%d日 %H:%M:%S')}"
             })
+
+            # 如果選擇了知識庫，將知識庫內容添加到對話上下文
+            if selected_kb_ids:
+                db = SessionLocal()
+                try:
+                    # 獲取選中知識庫的內容
+                    knowledge_bases = db.query(KnowledgeBase).filter(
+                        KnowledgeBase.id.in_(selected_kb_ids)
+                    ).all()
+                    
+                    # 將知識庫內容添加到系統消息
+                    for kb in knowledge_bases:
+                        st.session_state.chat_history.append({
+                            "role": "system",
+                            "content": f"[知識庫: {kb.name}]\n{kb.content}"
+                        })
+                        
+                    # 顯示知識庫使用提示
+                    with st.expander("📚 知識庫參考", expanded=False):
+                        st.caption(f"AI 助手將參考 {len(knowledge_bases)} 個知識庫的內容")
+                finally:
+                    db.close()
 
             # 檢查是否包含 URL
             url_pattern = re.compile(

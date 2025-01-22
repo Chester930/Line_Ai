@@ -42,6 +42,9 @@ class KnowledgeBase(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False, unique=True)
     description = Column(Text)
+    content = Column(Text)  # 知識庫內容
+    source = Column(String(255))  # 來源
+    enabled = Column(Boolean, default=True)  # 是否啟用
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -56,16 +59,23 @@ class Document(Base):
     
     id = Column(Integer, primary_key=True)
     title = Column(String(255), nullable=False)
-    content = Column(Text)
+    content = Column(Text)  # 原始內容
+    processed_content = Column(Text)  # 處理後的內容
     file_type = Column(String(50))
     file_size = Column(Float)
+    file_path = Column(String(255))
+    content_hash = Column(String(64))  # 內容雜湊值
     embedding_status = Column(String(50), default='pending')
+    metadata = Column(JSON)  # 元數據，包含版本信息
+    parent_id = Column(Integer, ForeignKey('documents.id'))  # 父文件ID（用於版本控制）
+    version = Column(Integer, default=1)  # 版本號
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 關聯
     knowledge_bases = relationship("KnowledgeBase", secondary="knowledge_base_documents", back_populates="documents")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
+    parent = relationship("Document", remote_side=[id], backref="versions")  # 版本關係
 
 # 知識庫與文件的多對多關聯表
 knowledge_base_documents = Table(

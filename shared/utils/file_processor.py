@@ -1,7 +1,7 @@
 import os
 import tempfile
 import asyncio
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional, Tuple, Union, Any
 import docx
 import pandas as pd
 import PyPDF2
@@ -9,7 +9,20 @@ from PIL import Image
 import speech_recognition as sr
 import io
 import logging
+import hashlib
 from datetime import datetime
+from langdetect import detect
+from jieba import analyse
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from textblob import TextBlob
+from gensim.summarization import summarize, keywords
+from whoosh.fields import Schema, TEXT, ID, DATETIME, KEYWORD
+from whoosh.analysis import StemmingAnalyzer
+from whoosh import index
+from whoosh.qparser import QueryParser
+import spacy
 from shared.database.crud import DocumentCRUD
 from shared.database.models import Document
 from shared.ai.media_agent import MediaAgent
@@ -23,6 +36,141 @@ class FileProcessor:
         self.media_agent = MediaAgent()
         self.MAX_FILE_SIZE = 300 * 1024 * 1024  # LINE限制：300MB
         
+        # 初始化 spaCy
+        try:
+            self.nlp = spacy.load('zh_core_web_sm')
+        except:
+            self.nlp = None
+            logger.warning("無法載入 spaCy 中文模型")
+        
+        # 初始化全文搜索索引
+        self.index_dir = os.path.join('data', 'search_index')
+        os.makedirs(self.index_dir, exist_ok=True)
+        
+        self.schema = Schema(
+            id=ID(stored=True),
+            title=TEXT(stored=True),
+            content=TEXT(analyzer=StemmingAnalyzer()),
+            file_type=TEXT(stored=True),
+            created_at=DATETIME(stored=True),
+            keywords=KEYWORD(stored=True, commas=True)
+        )
+        
+        # 創建或打開搜索索引
+        if not index.exists_in(self.index_dir):
+            self.ix = index.create_in(self.index_dir, self.schema)
+        else:
+            self.ix = index.open_dir(self.index_dir)
+        
+        # 初始化 TF-IDF 向量化器
+        self.vectorizer = TfidfVectorizer(
+            max_features=5000,
+            stop_words='english'
+        )
+        
+        # 初始化結巴分詞的 TF-IDF 關鍵詞提取器
+        self.tfidf = analyse.extract_tags
+        
+        self.supported_types = {
+            'text/plain': self._process_txt,
+            'application/pdf': self._process_pdf,
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': self._process_docx,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': self._process_excel,
+            'application/json': self._process_json,
+            'text/markdown': self._process_markdown,
+            'text/html': self._process_html
+        }
+        
+        # 定義不同文件類型的處理選項
+        self.processing_options = {
+            'text/plain': {'chunk_size': 1000, 'overlap': 200, 'min_length': 50},
+            'application/pdf': {'chunk_size': 1500, 'overlap': 300, 'min_length': 100},
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': {'chunk_size': 1200, 'overlap': 250, 'min_length': 75},
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {'chunk_size': 800, 'overlap': 150, 'min_length': 40},
+            'application/json': {'chunk_size': 500, 'overlap': 100, 'min_length': 30},
+            'text/markdown': {'chunk_size': 1000, 'overlap': 200, 'min_length': 50},
+            'text/html': {'chunk_size': 1000, 'overlap': 200, 'min_length': 50}
+        }
+
+    def _clean_and_format_content(self, content: str) -> str:
+        """清理和格式化內容"""
+        import re
+        
+        # 基本清理
+        content = content.strip()
+        
+        # 移除多餘的空白字符
+        content = ' '.join(content.split())
+        
+        # 標準化換行符
+        content = content.replace('\r\n', '\n').replace('\r', '\n')
+        
+        # 移除重複的換行
+        content = re.sub(r'\n{3,}', '\n\n', content)
+        
+        # 確保句子之間有適當的空格
+        content = content.replace('.', '. ').replace('。', '。 ')
+        content = re.sub(r'\s{2,}', ' ', content)
+        
+        # 移除特殊字符和控制字符
+        content = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', content)
+        
+        # 修復常見的格式問題（修正括號問題）
+        content = re.sub(r'([。！？!?])([^"\'"\'])', r'\1\n\2', content)  # 在句號後添加換行
+        content = re.sub(r'([。！？!?]["\'"\'"])([^，。！？!?])', r'\1\n\2', content)  # 在引號後添加換行
+        
+        # 移除空行開頭的空格
+        content = re.sub(r'\n\s+', '\n', content)
+        
+        # 確保段落之間有適當的間距
+        paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+        content = '\n\n'.join(paragraphs)
+        
+        return content
+
+    def _structure_content(self, content: str, file_type: str) -> Dict[str, Any]:
+        """將內容結構化，便於後續處理和存儲"""
+        options = self.processing_options.get(file_type, {
+            'chunk_size': 1000,
+            'overlap': 200,
+            'min_length': 50
+        })
+        
+        # 分割內容為段落
+        paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+        
+        # 創建文檔塊
+        chunks = []
+        current_chunk = ""
+        
+        for paragraph in paragraphs:
+            if len(current_chunk) + len(paragraph) <= options['chunk_size']:
+                current_chunk += (paragraph + "\n\n")
+            else:
+                if len(current_chunk) >= options['min_length']:
+                    chunks.append(current_chunk.strip())
+                current_chunk = paragraph + "\n\n"
+        
+        if current_chunk and len(current_chunk) >= options['min_length']:
+            chunks.append(current_chunk.strip())
+        
+        # 提取關鍵信息
+        import re
+        title_candidates = re.findall(r'^[第一二三四五六七八九十\d]+[章節]\s*(.+)$', content, re.MULTILINE)
+        headings = re.findall(r'^#+\s*(.+)$', content, re.MULTILINE)
+        
+        return {
+            'chunks': chunks,
+            'metadata': {
+                'total_chunks': len(chunks),
+                'average_chunk_size': sum(len(c) for c in chunks) / len(chunks) if chunks else 0,
+                'titles': title_candidates[:5],  # 取前5個可能的標題
+                'headings': headings[:10],  # 取前10個標題
+                'total_length': len(content),
+                'processing_options': options
+            }
+        }
+
     async def process_file_with_timeout(
         self,
         file: Union[str, bytes, io.BytesIO],
@@ -78,39 +226,112 @@ class FileProcessor:
         """非同步處理檔案"""
         try:
             # 將檔案轉換為 BytesIO 對象
-            if isinstance(file, str):  # 檔案路徑
+            if isinstance(file, str):
                 with open(file, 'rb') as f:
                     file_content = io.BytesIO(f.read())
             elif isinstance(file, bytes):
                 file_content = io.BytesIO(file)
-            else:  # 已經是 BytesIO
+            else:
                 file_content = file
             
-            # 提取內容
-            content = await self._extract_content_async(file_content, file_type)
+            # 提取原始內容
+            raw_content = await self._extract_content_async(file_content, file_type)
+            
+            # 清理和格式化內容
+            cleaned_content = self._clean_and_format_content(raw_content['text'])
+            
+            # 結構化內容
+            structured_content = self._structure_content(cleaned_content, file_type)
+            
+            # 分析內容
+            analysis_result = self._analyze_content(cleaned_content)
+            
+            result = {
+                'success': True,
+                'content': raw_content['text'],  # 原始內容
+                'processed_content': cleaned_content,  # 處理後的內容
+                'structured_content': structured_content,  # 結構化的內容
+                'metadata': {
+                    'file_type': file_type,
+                    'processed_at': datetime.utcnow().isoformat(),
+                    'analysis': analysis_result,
+                    **structured_content['metadata']
+                }
+            }
             
             if save_to_db and self.db:
-                # 保存到資料庫
-                file_path = self._save_file(file_content, file_type)
-                doc = DocumentCRUD.create_document(
-                    self.db,
-                    title=f"uploaded_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    content=content['text'],
-                    file_path=file_path,
-                    file_type=file_type
-                )
-                return {
-                    'success': True,
-                    'document_id': doc.id,
-                    'content': content
-                }
-            else:
-                return {
-                    'success': True,
-                    'content': content
-                }
+                # 計算內容雜湊值
+                content_hash = self._calculate_content_hash(result['processed_content'])
+                
+                # 檢查是否存在相同內容的文件
+                existing_doc = self.db.query(Document).filter(
+                    Document.content_hash == content_hash
+                ).first()
+                
+                if existing_doc:
+                    # 檢測變化
+                    changes = self._detect_content_changes(
+                        existing_doc.processed_content or existing_doc.content,
+                        result['processed_content']
+                    )
+                    
+                    # 如果內容有顯著變化，創建新版本
+                    if changes['diff_ratio'] < 0.95:  # 如果差異超過5%
+                        # 保存新版本
+                        file_path = self._save_file(file_content, file_type)
+                        doc = DocumentCRUD.create_document(
+                            self.db,
+                            title=f"{existing_doc.title}_v{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                            content=result['content'],
+                            processed_content=result['processed_content'],
+                            file_path=file_path,
+                            file_type=file_type,
+                            metadata={
+                                **result['metadata'],
+                                'version_info': {
+                                    'original_id': existing_doc.id,
+                                    'changes': changes
+                                }
+                            },
+                            content_hash=content_hash
+                        )
+                        result['document_id'] = doc.id
+                        result['version_info'] = {
+                            'is_new_version': True,
+                            'original_id': existing_doc.id,
+                            'changes': changes
+                        }
+                    else:
+                        # 內容相似度高，不創建新版本
+                        result['document_id'] = existing_doc.id
+                        result['version_info'] = {
+                            'is_new_version': False,
+                            'message': '文件內容相似度高，未創建新版本'
+                        }
+                else:
+                    # 創建新文件
+                    file_path = self._save_file(file_content, file_type)
+                    doc = DocumentCRUD.create_document(
+                        self.db,
+                        title=structured_content['metadata']['titles'][0] if structured_content['metadata']['titles'] else f"uploaded_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                        content=result['content'],
+                        processed_content=result['processed_content'],
+                        file_path=file_path,
+                        file_type=file_type,
+                        metadata=result['metadata'],
+                        content_hash=content_hash
+                    )
+                    result['document_id'] = doc.id
+            
+            # 查找相似文件
+            similar_docs = self.find_similar_documents(result['processed_content'])
+            if similar_docs:
+                result['similar_documents'] = similar_docs
+            
+            return result
                 
         except Exception as e:
+            logger.error(f"處理檔案時發生錯誤：{str(e)}")
             raise ValueError(f"處理檔案時發生錯誤：{str(e)}")
     
     async def _extract_content_async(self, file: io.BytesIO, file_type: str) -> Dict:
@@ -218,3 +439,235 @@ class FileProcessor:
             shutil.rmtree(self.temp_dir)
         except:
             pass
+
+    def _process_txt(self, file: io.BytesIO) -> str:
+        """處理文本文件"""
+        return file.read().decode('utf-8')
+    
+    def _process_pdf(self, file: io.BytesIO) -> str:
+        """處理 PDF 文件"""
+        pdf = PyPDF2.PdfReader(file)
+        text = []
+        for page in pdf.pages:
+            text.append(page.extract_text())
+        return '\n'.join(text)
+    
+    def _process_docx(self, file: io.BytesIO) -> str:
+        """處理 Word 文件"""
+        doc = docx.Document(file)
+        return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+    
+    def _process_excel(self, file: io.BytesIO) -> str:
+        """處理 Excel 文件"""
+        df = pd.read_excel(file)
+        # 將 DataFrame 轉換為易讀的文本格式
+        return df.to_string(index=False)
+
+    def _analyze_content(self, content: str) -> Dict[str, Any]:
+        """分析內容，提取關鍵信息"""
+        try:
+            # 基本分析
+            language = detect(content)
+            
+            # 使用 TextBlob 進行情感分析
+            blob = TextBlob(content)
+            sentiment = blob.sentiment
+            
+            # 使用 gensim 生成摘要和關鍵詞
+            try:
+                auto_summary = summarize(content, ratio=0.3)
+            except:
+                auto_summary = '\n'.join(content.split('\n')[:3])
+            
+            try:
+                auto_keywords = keywords(content, ratio=0.1)
+            except:
+                auto_keywords = []
+            
+            # 使用 spaCy 進行命名實體識別
+            entities = []
+            if self.nlp and language == 'zh':
+                doc = self.nlp(content)
+                entities = [
+                    {
+                        'text': ent.text,
+                        'label': ent.label_,
+                        'start': ent.start_char,
+                        'end': ent.end_char
+                    }
+                    for ent in doc.ents
+                ]
+            
+            # 提取中文關鍵詞
+            if language == 'zh':
+                cn_keywords = self.tfidf(content, topK=10, withWeight=True)
+            else:
+                cn_keywords = []
+            
+            # 計算基本統計
+            paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+            sentences = content.split('。') + content.split('.')
+            
+            return {
+                'language': language,
+                'sentiment': {
+                    'polarity': sentiment.polarity,
+                    'subjectivity': sentiment.subjectivity
+                },
+                'summary': auto_summary,
+                'keywords': {
+                    'auto': list(auto_keywords),
+                    'chinese': cn_keywords
+                },
+                'entities': entities,
+                'statistics': {
+                    'word_count': len(content.split()),
+                    'char_count': len(content),
+                    'paragraph_count': len(paragraphs),
+                    'sentence_count': len(sentences),
+                    'average_sentence_length': sum(len(s) for s in sentences) / len(sentences) if sentences else 0
+                }
+            }
+        except Exception as e:
+            logger.warning(f"內容分析時發生錯誤：{str(e)}")
+            return {}
+
+    def _process_json(self, file: io.BytesIO) -> str:
+        """處理 JSON 文件"""
+        import json
+        content = file.read().decode('utf-8')
+        # 格式化 JSON 以便閱讀
+        parsed = json.loads(content)
+        return json.dumps(parsed, ensure_ascii=False, indent=2)
+
+    def _process_markdown(self, file: io.BytesIO) -> str:
+        """處理 Markdown 文件"""
+        import markdown
+        content = file.read().decode('utf-8')
+        # 將 Markdown 轉換為純文本
+        html = markdown.markdown(content)
+        # 移除 HTML 標籤
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+        return soup.get_text()
+
+    def _process_html(self, file: io.BytesIO) -> str:
+        """處理 HTML 文件"""
+        from bs4 import BeautifulSoup
+        content = file.read().decode('utf-8')
+        soup = BeautifulSoup(content, 'html.parser')
+        # 移除腳本和樣式
+        for script in soup(["script", "style"]):
+            script.decompose()
+        return soup.get_text()
+
+    def calculate_similarity(self, text1: str, text2: str) -> float:
+        """計算兩段文本的相似度"""
+        try:
+            # 將文本轉換為 TF-IDF 向量
+            tfidf_matrix = self.vectorizer.fit_transform([text1, text2])
+            # 計算餘弦相似度
+            similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+            return float(similarity)
+        except Exception as e:
+            logger.warning(f"計算相似度時發生錯誤：{str(e)}")
+            return 0.0
+
+    def find_similar_documents(self, content: str, threshold: float = 0.7) -> List[Dict]:
+        """查找相似的文件"""
+        try:
+            if not self.db:
+                return []
+            
+            similar_docs = []
+            # 獲取所有文件
+            documents = self.db.query(Document).all()
+            
+            for doc in documents:
+                similarity = self.calculate_similarity(content, doc.processed_content or doc.content)
+                if similarity >= threshold:
+                    similar_docs.append({
+                        'document_id': doc.id,
+                        'title': doc.title,
+                        'similarity': similarity
+                    })
+            
+            # 按相似度排序
+            similar_docs.sort(key=lambda x: x['similarity'], reverse=True)
+            return similar_docs
+            
+        except Exception as e:
+            logger.error(f"查找相似文件時發生錯誤：{str(e)}")
+            return []
+
+    def _calculate_content_hash(self, content: str) -> str:
+        """計算內容的雜湊值"""
+        return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+    def _detect_content_changes(self, old_content: str, new_content: str) -> Dict[str, Any]:
+        """檢測內容變化"""
+        import difflib
+        
+        # 使用 difflib 計算差異
+        differ = difflib.Differ()
+        diff = list(differ.compare(old_content.splitlines(), new_content.splitlines()))
+        
+        # 統計變化
+        added = len([line for line in diff if line.startswith('+ ')])
+        removed = len([line for line in diff if line.startswith('- ')])
+        changed = len([line for line in diff if line.startswith('? ')])
+        
+        return {
+            'added_lines': added,
+            'removed_lines': removed,
+            'changed_lines': changed,
+            'total_changes': added + removed + changed,
+            'diff_ratio': difflib.SequenceMatcher(None, old_content, new_content).ratio()
+        }
+
+    def search_documents(self, query: str, field: str = 'content', limit: int = 10) -> List[Dict]:
+        """全文搜索文件"""
+        try:
+            with self.ix.searcher() as searcher:
+                query_parser = QueryParser(field, schema=self.schema)
+                query_obj = query_parser.parse(query)
+                results = searcher.search(query_obj, limit=limit)
+                
+                return [{
+                    'id': result['id'],
+                    'title': result['title'],
+                    'file_type': result['file_type'],
+                    'created_at': result['created_at'],
+                    'keywords': result['keywords'].split(',') if result['keywords'] else [],
+                    'score': result.score
+                } for result in results]
+        except Exception as e:
+            logger.error(f"搜索文件時發生錯誤：{str(e)}")
+            return []
+
+    def update_search_index(self, doc: Document):
+        """更新搜索索引"""
+        try:
+            writer = self.ix.writer()
+            
+            # 提取關鍵詞
+            analysis_result = self._analyze_content(doc.processed_content or doc.content)
+            keywords = ','.join(
+                [k for k, _ in analysis_result.get('keywords', {}).get('chinese', [])] +
+                list(analysis_result.get('keywords', {}).get('auto', []))
+            )
+            
+            # 更新索引
+            writer.update_document(
+                id=str(doc.id),
+                title=doc.title,
+                content=doc.processed_content or doc.content,
+                file_type=doc.file_type,
+                created_at=doc.created_at,
+                keywords=keywords
+            )
+            
+            writer.commit()
+            
+        except Exception as e:
+            logger.error(f"更新搜索索引時發生錯誤：{str(e)}")

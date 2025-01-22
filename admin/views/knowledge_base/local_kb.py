@@ -38,7 +38,8 @@ def show_local_kb_section(kb: KnowledgeBase, db: Session):
                         # 創建文件記錄
                         doc = Document(
                             title=uploaded_file.name,
-                            content=result['content']['text'],
+                            content=result['content'],  # 原始內容
+                            processed_content=result['processed_content'],  # 處理後的內容
                             file_type=uploaded_file.type,
                             file_size=uploaded_file.size,
                             created_at=datetime.utcnow()
