@@ -12,5 +12,21 @@
     "chunk_size": 500,
     "weight": 0.5,
     "similarity_threshold": 0.7
+  },
+  "web_browser": {
+    "enabled": true,
+    "timeout": 10,
+    "max_content_length": 50000
+  },
+  "youtube_subtitle": {
+    "enabled": true,
+    "preferred_languages": [
+      "zh-TW",
+      "zh-CN",
+      "en"
+    ],
+    "chunk_size": 500,
+    "include_auto_subtitles": true,
+    "max_results": 10
   }
 }
